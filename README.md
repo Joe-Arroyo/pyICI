@@ -22,7 +22,7 @@ pyICI is a GUI-based analysis tool designed for researchers working with electro
 
 - **Pulse Analysis**: Evaluate voltage during current interruption pulses
 
-- - **Regression Analysis**: Perform linear regression and adjust the coefficient of determiaation (*R$^2$*)
+- **Regression Analysis**: Perform linear regression and adjust the coefficient of determiaation (*R$^2$*)
   - User-defined regression analysis window (within the current interruption period)
   - Linear least-squares regression on the selected data window
   - Fit parameters: Slope, Intercept, and R$^2$*
