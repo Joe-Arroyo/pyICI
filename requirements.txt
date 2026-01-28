@@ -1,0 +1,16 @@
+# ICI Battery Analysis - Python Dependencies
+# Version 2.0.0 - GUI Edition
+# Updated: December 2024
+
+# Core Dependencies (Required for GUI)
+numpy>=1.24.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+
+# GUI Framework
+# tkinter - comes with Python standard library (no install needed)
+
+# Optional: Jupyter Notebook Support (not needed for GUI mode)
+# Uncomment lines below if you want to use analysis modules in Jupyter
+# ipywidgets>=8.0.0
+# IPython>=8.0.0
