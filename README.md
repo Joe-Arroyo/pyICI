@@ -26,17 +26,20 @@ pyICI is a GUI-based analysis tool designed for researchers working with electro
   - User-defined regression analysis window (within the current interruption period)
   - Linear least-squares regression on the selected data window
   - Fit parameters: Slope, Intercept, and R<sup>2</sup>
-  - Covariance matrix uses for error propagation analysis
-  - Independ adjust for charge and discharge
-  - Capability of adjusting one pules, all pulses within one cycle or all cycles at once
-  - Side-by-side visualizaion for charge and discharge analysis
+  - Covariance matrix used for error propagation analysis
+  - Independently adjust charge and discharge
+  - Capability of adjusting one pulse, all pulses within one cycle, or all cycles at once
+  - Side-by-side visualization for charge and discharge analysis
      
 - **Kinetic Analysis**: *R* and *k* calculation from the regression analysis
   - R = -intercept / I, with I being the current before the interruption 
   - k = -slope / I, with I being the current before the interruption 
   - Error bars using the data from the covariance matrix
   - Cycle selection
-  - Side-by-side visualizaion for charge and discharge
-  - Data export of all values with uncertainties for external analysis. These values include, V, R, R errors, k, k errors, and R<sup>2</sup>
+  - Side-by-side visualization for charge and discharge
+  - Data export of all values with uncertainties for external analysis. These values include *V*, *R*, *R_errors*, *k*, *k_errors*, and *R*<sup>2</sup>
+
+  ## Installation
+  
 
 
