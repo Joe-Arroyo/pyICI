@@ -1,4 +1,4 @@
-# pyICI - Python-based Interactive Cycling Interface
+# pyICI - Python-based Interactive Interface for Intermitent Current Interruption (ICI) 
 # Dependencies for GUI-based electrochemical data analysis
 # Version 2.1.0 - Complete Edition
 # Updated: January 2026
@@ -66,3 +66,4 @@ time                         # Time-related functions
 # Requires Python 3.8 or higher
 # Tested on Python 3.8, 3.9, 3.10, 3.11
 # Not tested on Python 3.12+ (should work but not guaranteed)
+
