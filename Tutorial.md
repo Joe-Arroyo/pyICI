@@ -1,5 +1,5 @@
 # Tutorial
-1. **File format**: this GUI only reads .txt files  
+1. **File format**: this GUI only reads .txt files. 
   - **Single cycle**: three-column files:
     ```
     Time (s)  Voltage (V)  Current (mA) 
@@ -16,3 +16,4 @@
     Cycle2        time2     Voltage2     Current2
     ...           ...       ...          ...      
     ```
+  See examples in the [data](/data) folder
