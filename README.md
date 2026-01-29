@@ -39,7 +39,22 @@ pyICI is a GUI-based analysis tool designed for researchers working with electro
   - Side-by-side visualization for charge and discharge
   - Data export of all values with uncertainties for external analysis. These values include *V*, *R*, *R_errors*, *k*, *k_errors*, and *R*<sup>2</sup>
 
-  ## Installation
-  
-
-
+## Installation
+1. **Download the project:**
+```bash
+# Clone the repository
+git clone https://github.com/[your-username]/pyICI.git
+cd pyICI
+```
+2. **Install Python dependencies:**
+```bash
+ # Install required packages
+   pip install -r requirements.txt
+```
+3. **Verify installation**
+```bash
+   # Run the application
+   python main_gui.py
+```
+4. **Start using pyICI**
+See [Link text] Tutorial 
