@@ -57,4 +57,4 @@ cd pyICI
    python main_gui.py
 ```
 4. **Start using pyICI**
-See [Link text] Tutorial 
+See [Tutorial](docs/Tutorial.md) for a quick guide trough pyICI
