@@ -56,5 +56,4 @@ cd pyICI
    # Run the application
    python main_gui.py
 ```
-4. **Start using pyICI**
-See [Tutorial](docs/Tutorial.md) for a quick guide trough pyICI
+4. **Start using pyICI**: See [Tutorial](docs/Tutorial.md) for a quick guide trough pyICI
