@@ -73,7 +73,6 @@ sudo apt install python3 python3-pip
 
  ### Step 2: **Download the project:**
 ```bash
-```bash
 # Clone the repository
 git clone https://github.com/Joe-Arroyo/pyICI.git
 cd pyICI
