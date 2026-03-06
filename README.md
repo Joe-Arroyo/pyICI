@@ -72,6 +72,7 @@ sudo apt install python3 python3-pip
 ---
 
  ### Step 2: **Download the project:**
+ Open a terminal (Command prompt on Windows, Terminal on macOS/Linux) and run:
 ```bash
 # Clone the repository
 git clone https://github.com/Joe-Arroyo/pyICI.git
@@ -83,10 +84,10 @@ Or download the ZIP archive from the [GitHub page](https://github.com/Joe-Arroyo
 
 ### Step 3: Create a virtual environment (recommended)
 
-Using a virtual environment keeps pyICI's dependencies isolated from other Python projects on your system. It is also required on modern Debian/Ubuntu and Fedora systems, which block system-wide pip installs by default.
+Using a virtual environment keeps pyICI's dependencies isolated from other Python projects on your system.
 
-**Windows:**
-```bash
+**Windows (Command Prompt):**
+```cmd
 python -m venv venv
 venv\Scripts\activate
 ```
