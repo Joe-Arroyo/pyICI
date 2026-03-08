@@ -1,43 +1,47 @@
 # pyICI
 
-**Python-based Interactive Interface for Intermitent Current Interruption (ICI) data analysis in battery research.**
+**Python-based Interactive Interface for Intermittent Current Interruption (ICI) data analysis for Battery Research**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 ## Overview
-pyICI is a GUI-based analysis tool designed for researchers working with electrochemical ICI cycling data. The tool facilitates the calculation of the internal resistance (*R*) and the diffusion resistance coefficient (*k*) for large datasets with one or more cycles. Further information about the ICI technique and associated literature can be found on Dr. Matthew J. Lacey's website (https://lacey.se/projects/ici) who developed the technique for routine battery analysis.
+
+Intermittent current interruption (ICI) is an electrochemical technique used for the diagnostic analysis of battery systems. It involves introducing brief interruptions or pauses (1–10 seconds) into a constant current charge–discharge cycle and analyzing the voltage response during each interruption. The technique characterizes cell resistance using two parameters: the internal resistance (Ω), which captures Ohmic contributions, and the diffusion resistance coefficient (Ω s<sup>−1/2</sup>), which captures solid-state mass transport effects. Because ICI assumes a diffusion-controlled system, cycling must be performed at a comparatively slow rate of C/5 or lower. 
+
+pyICI is a GUI-based analysis tool designed for researchers working with electrochemical ICI data. The tool facilitates the calculation of the internal resistance (*R*) and the diffusion resistance coefficient (*k*) for datasets with one or more cycles. 
+
+Further information about the technical details of the ICI technique and associated literature can be found on Dr. Matthew J. Lacey's website (https://lacey.se/projects/ici) who developed the technique for routine battery analysis.
 
 ## Features
 
-- **Data Loading & Visualization**: Import and view cycling raw data from multiple sources, as long as the formatting of the input datafile is respected
-  - ICI starting point detection
-  - Data visualization of individual and all cycles 
+- **Data Loading & Visualization**: Import and view cycling data (as long as the formatting of the input datafile is respected)
+  - ICI cycle detection
+  - Data visualization of individual or multiple cycles 
   - Plots available: Voltage vs time and current vs time (only in individual cycle visualization)
     
-- **Classification**: Identify and classify cycles
-  - Charge and discharge detection
-  - Current interruption steps identification
+- **Classification**: Identify and classify cycling regimes
+  - Charge and discharge regime detection
+  -  Current interruption step identification
   - Plots available: Voltage vs time and Voltage vs capacity 
 
-- **Pulse Analysis**: Evaluate voltage during current interruption pulses
+- **Pulse Analysis**: Evaluate voltage during individual current interruption pulses
 
-- **Regression Analysis**: Perform linear regression and adjust the coefficient of determiaation (*R<sup>2</sup>*)
+- **Regression Analysis**: Perform linear regression of the voltage vs t<sup>1/2</sup> data during each ICI step
   - User-defined regression analysis window (within the current interruption period)
   - Linear least-squares regression on the selected data window
-  - Fit parameters: Slope, Intercept, and R<sup>2</sup>
+  - Fit parameters: Slope, Intercept, and R<sup>2</sup> (the coefficient of determination)
   - Covariance matrix used for error propagation analysis
-  - Independently adjust charge and discharge
-  - Capability of adjusting one pulse, all pulses within one cycle, or all cycles at once
+  - Possibility to individually fit each ICI step if necessary
   - Side-by-side visualization for charge and discharge analysis
      
-- **Kinetic Analysis**: *R* and *k* calculation from the regression analysis
-  - R = -intercept / I, with I being the current before the interruption 
-  - k = -slope / I, with I being the current before the interruption 
-  - Error bars using the data from the covariance matrix
+- **Resistance Analysis**: *R* and *k* calculation from the regression analysis
+  - R = -intercept/I, with I being the current before the interruption 
+  - k = -slope/I, with I being the current before the interruption 
+  - Errors calculated using the data from the covariance matrix
   - Cycle selection
   - Side-by-side visualization for charge and discharge
-  - Data export of all values with uncertainties for external analysis. These values include *V*, *R*, *R_errors*, *k*, *k_errors*, and *R*<sup>2</sup>
+  - Data export of all values with errors for external analysis. These values include *V*, *R*, *R_errors*, *k*, *k_errors*, and *R*<sup>2</sup>
 
 ## Installation
 
