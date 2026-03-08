@@ -29,8 +29,6 @@
     
      With more than 10 cycles, the cycles will be colored using the Viridis colormap, and the legend will be replaced with a colorbar.
      
-     <img width="800" height="600" alt="100 cycles raw" src="https://github.com/user-attachments/assets/e76289e6-f95f-4d5d-852a-eacaad2ee965" />
-
 4. **Classification:** In this tab, the data is classified into charge or discharge within each cycle. Data can be plotted as:
    - **Voltage vs time:** seconds are converted to hours, and one can plot either individual or multiple cycles.
      
@@ -95,7 +93,5 @@
     <img width="300" height="300" alt="R and k charge" src="https://github.com/user-attachments/assets/afb7d277-fae7-4cc3-b968-460df96527bf" /><img width="300" height="300" alt="R and k discharge" src="https://github.com/user-attachments/assets/7cc6147d-10b2-419b-8c69-69ca0eaa3fe8" />
 
     As in point 2, when working with more than 10 cycles, the legend changes to a colormap
-
-    <img width="300" height="300" alt="R and k charge 100" src="https://github.com/user-attachments/assets/2b125215-5d7e-49e5-87d4-9db6d1cd294f" /><img width="300" height="300" alt="R and k discharge 100" src="https://github.com/user-attachments/assets/75c0198e-f45e-4960-8926-2eecea53f3cd" />
-
+ 
 9. **Export results:** In tab 5, *R*, *k*, and R<sup>2</sup> can be exported into a CSV file, along with their errors, cycle, and pulse numbers. Charge and discharge data are exported in different files. See the exported resultsfor the 10 cycles in the [data](/data) folder.
