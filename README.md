@@ -40,20 +40,91 @@ pyICI is a GUI-based analysis tool designed for researchers working with electro
   - Data export of all values with uncertainties for external analysis. These values include *V*, *R*, *R_errors*, *k*, *k_errors*, and *R*<sup>2</sup>
 
 ## Installation
-1. **Download the project:**
+
+### Step 1: **Install Python:**
+**Windows:**
+Download the installer from [python.org](https://www.python.org/downloads/) and run it. Make sure to check "Add Python to PATH" during installation.
+
+**macOS:**
+Download the installer from [python.org](https://www.python.org/downloads/), or install via Homebrew:
+```bash
+brew install python
+```
+
+**Linux:**
+Python is usually pre-installed. Verify with:
+```bash
+python3 --version
+```
+If not installed, use your package manager:
+```bash
+# Ubuntu/Debian
+sudo apt install python3 python3-pip
+```
+
+> **Note on tkinter**: pyICI uses `tkinter` for its GUI. Installation varies by platform:
+> - **Windows**: included with the standard Python installer, no action needed
+> - **macOS**: included with Python from python.org. If using Homebrew: `brew install python-tk`
+> - **Ubuntu/Debian**: `sudo apt install python3-tk`
+> - **Fedora**: `sudo dnf install python3-tkinter`
+> - **CentOS/RHEL**: `sudo yum install python3-tkinter`
+
+---
+
+ ### Step 2: **Download the project:**
+ Open a terminal (Command prompt on Windows, Terminal on macOS/Linux) and run:
 ```bash
 # Clone the repository
-git clone https://github.com/[your-username]/pyICI.git
+git clone https://github.com/Joe-Arroyo/pyICI.git
 cd pyICI
 ```
-2. **Install Python dependencies:**
+Or download the ZIP archive from the [GitHub page](https://github.com/Joe-Arroyo/pyICI) and extract it.
+
+---
+
+### Step 3: Create a virtual environment (recommended)
+
+Using a virtual environment keeps pyICI's dependencies isolated from other Python projects on your system.
+
+**Windows (Command Prompt):**
+```cmd
+python -m venv venv
+venv\Scripts\activate
+```
+
+**macOS / Linux:**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+You should see `(venv)` in your terminal prompt. To deactivate later, run `deactivate`.
+
+--- 
+
+### Step4:. **Install Python dependencies:**
 ```bash
  # Install required packages
    pip install -r requirements.txt
 ```
-3. **Verify installation**
+
+### Step 5: Run pyICI
+
+**Windows:**
 ```bash
-   # Run the application
-   python main_gui.py
+python main_gui.py
 ```
-4. **Start using pyICI**: See [Tutorial](/Tutorial.md) for a quick guide trough pyICI
+
+**macOS / Linux:**
+```bash
+python3 main_gui.py
+```
+
+---
+
+### Step 6: Get started
+
+See the [Tutorial](Tutorial.md) for a quick guide through pyICI's features.
+
+---
+
