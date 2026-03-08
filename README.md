@@ -37,12 +37,12 @@ Technical details of the ICI technique and associated literature can be found on
   - Side-by-side visualization for charge and discharge analysis
      
 - **Resistance analysis**: *R* and *k* calculation from the regression analysis
-  - R = -intercept/I, with I being the current before the interruption 
-  - k = -slope/I, with I being the current before the interruption 
+  - *R* = -intercept/I, with I being the current before the interruption 
+  - *k* = -slope/I, with I being the current before the interruption 
   - Errors calculated using the data from the covariance matrix
   - Cycle selection
   - Side-by-side visualization for charge and discharge
-  - Data export of all values with errors for external analysis. These values include *V*, *R*, *R_errors*, *k*, *k_errors*, and *R*<sup>2</sup>
+  - Data export of all values with errors for further analysis. These values include *V*, *R*, *R_errors*, *k*, *k_errors*, and *R*<sup>2</sup>
 
 ## Installation
 
