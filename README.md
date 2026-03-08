@@ -7,11 +7,11 @@
 
 ## Overview
 
-Intermittent current interruption (ICI) is an electrochemical technique used for the diagnostic analysis of battery systems. It involves introducing brief interruptions or pauses (1–10 seconds) into a constant current charge–discharge cycle and analyzing the voltage response during each interruption. The technique characterizes cell resistance using two parameters: the internal resistance (Ω), which captures Ohmic contributions, and the diffusion resistance coefficient (Ω s<sup>−1/2</sup>), which captures solid-state mass transport effects. Because ICI assumes a diffusion-controlled system, cycling must be performed at a comparatively slow rate of C/5 or lower. 
+Intermittent current interruption (ICI) is an electrochemical technique used for the diagnostic analysis of battery systems. It involves introducing brief interruptions or pauses (1–10 seconds) into a constant current charge–discharge cycle and analyzing the voltage response during each interruption. The technique characterizes cell resistance using two parameters: the internal resistance (*R*, Ω), which captures Ohmic contributions, and the diffusion resistance coefficient (*k*, Ω s<sup>−1/2</sup>), which captures solid-state mass transport effects. Because ICI assumes a diffusion-controlled system, cycling must be performed at a comparatively slow rate of C/5 or lower. 
 
-pyICI is a GUI-based analysis tool designed for researchers working with electrochemical ICI data. The tool facilitates the calculation of the internal resistance (*R*) and the diffusion resistance coefficient (*k*) for datasets with one or more cycles. 
+pyICI is a GUI-based analysis tool designed for researchers working with electrochemical ICI data. The tool facilitates the calculation of *R* and *k* from datasets with one or more cycles. 
 
-Technical details of the ICI technique and associated literature can be found on Dr. Matthew J. Lacey's website (https://lacey.se/projects/ici), who developed the technique for routine battery analysis.
+Technical details of the ICI technique and associated literature can be found on the website of Dr. Matthew J. Lacey ([link here](https://lacey.se/projects/ici)), who developed the technique for routine battery analysis.
 
 ## Features
 
@@ -37,8 +37,8 @@ Technical details of the ICI technique and associated literature can be found on
   - Side-by-side visualization for charge and discharge analysis
      
 - **Resistance analysis**: *R* and *k* calculation from the regression analysis
-  - *R* = -intercept/I, with I being the current before the interruption 
-  - *k* = -slope/I, with I being the current before the interruption 
+  - $R = - \frac{intercept}{I}$, with I being the current before the interruption 
+  - $k = - \frac{slope}{I}$, with I being the current before the interruption
   - Errors calculated using the data from the covariance matrix
   - Cycle selection
   - Side-by-side visualization for charge and discharge
@@ -83,7 +83,7 @@ sudo apt install python3 python3-pip
 git clone https://github.com/Joe-Arroyo/pyICI.git
 cd pyICI
 ```
-Or download the ZIP archive from the [GitHub page](https://github.com/Joe-Arroyo/pyICI) and extract it.
+Or download the ZIP file and extract it.
 
 ---
 
