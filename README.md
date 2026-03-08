@@ -6,7 +6,7 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 ## Overview
-pyICI is a GUI-based analysis tool designed for researchers working with electrochemical ICI cycling data. The tool facilitates the calculation of the internal resistance (*R*) and the diffusion resistance coefficient (*k*) for large datasets with one or more cycles.
+pyICI is a GUI-based analysis tool designed for researchers working with electrochemical ICI cycling data. The tool facilitates the calculation of the internal resistance (*R*) and the diffusion resistance coefficient (*k*) for large datasets with one or more cycles. Further information about the ICI technique and associated literature can be found on Dr. Matthew J. Lacey's website (https://lacey.se/projects/ici) who developed the technique for routine battery analysis.
 
 ## Features
 
