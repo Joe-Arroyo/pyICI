@@ -94,7 +94,7 @@ class Complete5TabGUI:
         print("Creating Tab 5: Kinetic Analysis...")
         try:
             kinetics_frame = ttk.Frame(self.notebook)
-            self.notebook.add(kinetics_frame, text="⚗️ Tab 5: Kinetic Analysis")
+            self.notebook.add(kinetics_frame, text="⚗️ Tab 5: Resistance Analysis")
             self.kinetics_tab = KineticsTab(kinetics_frame, self.shared_data)
             print("  ✅ Tab 5 created")
         except Exception as e:
@@ -168,7 +168,7 @@ class Complete5TabGUI:
             if hasattr(self.regression_tab, 'load_shared_data'):
                 self.regression_tab.load_shared_data()
         
-        if "Kinetic" in tab_name and hasattr(self, 'kinetics_tab'):
+        if "Resistance" in tab_name and hasattr(self, 'kinetics_tab'):
             print("🔄 Refreshing Kinetic tab data...")
             if hasattr(self.kinetics_tab, 'load_shared_data'):
                 self.kinetics_tab.load_shared_data()
