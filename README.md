@@ -11,11 +11,11 @@ Intermittent current interruption (ICI) is an electrochemical technique used for
 
 pyICI is a GUI-based analysis tool designed for researchers working with electrochemical ICI data. The tool facilitates the calculation of the internal resistance (*R*) and the diffusion resistance coefficient (*k*) for datasets with one or more cycles. 
 
-Further information about the technical details of the ICI technique and associated literature can be found on Dr. Matthew J. Lacey's website (https://lacey.se/projects/ici) who developed the technique for routine battery analysis.
+Technical details of the ICI technique and associated literature can be found on Dr. Matthew J. Lacey's website (https://lacey.se/projects/ici), who developed the technique for routine battery analysis.
 
 ## Features
 
-- **Data Loading & Visualization**: Import and view cycling data (as long as the formatting of the input datafile is respected)
+- **Data Loading & visualization**: Import and view cycling data (as long as the formatting of the input datafile is respected)
   - ICI cycle detection
   - Data visualization of individual or multiple cycles 
   - Plots available: Voltage vs time and current vs time (only in individual cycle visualization)
@@ -25,17 +25,18 @@ Further information about the technical details of the ICI technique and associa
   -  Current interruption step identification
   - Plots available: Voltage vs time and Voltage vs capacity 
 
-- **Pulse Analysis**: Evaluate voltage during individual current interruption pulses
+- **Pulse analysis**: Evaluate voltage during individual current interruption pulses
 
-- **Regression Analysis**: Perform linear regression of the voltage vs t<sup>1/2</sup> data during each ICI step
+- **Regression analysis**: Interactively perform linear regression of the voltage vs $\sqrt{time}$ data during each ICI step
   - User-defined regression analysis window (within the current interruption period)
-  - Linear least-squares regression on the selected data window
-  - Fit parameters: Slope, Intercept, and R<sup>2</sup> (the coefficient of determination)
+  - Fit parameters: slope and intercept
+  - Fit evaluated with R<sup>2</sup> (the coefficient of determination) values
+  - Both the regression fit and R<sup>2</sup> shown in adjacent windows 
   - Covariance matrix used for error propagation analysis
-  - Possibility to individually fit each ICI step if necessary
+  - Possibility to individually fit each ICI step if batch processing is unsuitable
   - Side-by-side visualization for charge and discharge analysis
      
-- **Resistance Analysis**: *R* and *k* calculation from the regression analysis
+- **Resistance analysis**: *R* and *k* calculation from the regression analysis
   - R = -intercept/I, with I being the current before the interruption 
   - k = -slope/I, with I being the current before the interruption 
   - Errors calculated using the data from the covariance matrix
