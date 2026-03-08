@@ -132,3 +132,5 @@ See the [Tutorial](Tutorial.md) for a quick guide through pyICI's features.
 
 ---
 
+## AI Assistance
+This project was developed with the assistance of Claude (Anthropic). All code has been reviewed and tested by the authors.
