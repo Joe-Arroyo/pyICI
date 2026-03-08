@@ -3,7 +3,7 @@
 **Python-based Interactive Interface for Intermittent Current Interruption (ICI) data analysis for Battery Research**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
 ## Overview
 
@@ -45,6 +45,8 @@ Technical details of the ICI technique and associated literature can be found on
   - Data export of all values with errors for further analysis. These values include *V*, *R*, *R_errors*, *k*, *k_errors*, and *R*<sup>2</sup>
 
 ## Installation
+
+- Compatible with Python 3.9 - 3.13
 
 ### Step 1: **Install Python:**
 **Windows:**
