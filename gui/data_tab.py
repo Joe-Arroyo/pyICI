@@ -67,6 +67,10 @@ class DataTab:
         self.ici_starts = {}  # Changed to dict like data_loader.py
         self.plot_data = None
         self.current_file = None
+
+        # Multi-file storage: {filename: {df_raw, cycle_list, ici_starts, plot_data, filepath}}
+        self.loaded_files = {}
+        self.active_file = None
         
         # Track colorbar to remove old ones
         self.current_colorbar = None
@@ -105,6 +109,47 @@ class DataTab:
         
         file_frame.columnconfigure(1, weight=1)
         
+        # LOADED FILES MANAGER
+        # ==============================
+        files_frame = ttk.LabelFrame(main_control_frame, text="Loaded Files", padding=5)
+        files_frame.pack(fill=tk.X, pady=(0, 5))
+
+        tree_frame = ttk.Frame(files_frame)
+        tree_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        cols = ("name", "cycles", "points")
+        self.files_tree = ttk.Treeview(tree_frame, columns=cols, show="headings",
+                                       height=2, selectmode="browse")
+        self.files_tree.heading("name",   text="File")
+        self.files_tree.heading("cycles", text="Cycles")
+        self.files_tree.heading("points", text="Points")
+        self.files_tree.column("name",   width=300, anchor=tk.W)
+        self.files_tree.column("cycles", width=60,  anchor=tk.CENTER)
+        self.files_tree.column("points", width=80,  anchor=tk.CENTER)
+
+        tree_vsb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.files_tree.yview)
+        self.files_tree.configure(yscrollcommand=tree_vsb.set)
+        self.files_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tree_vsb.pack(side=tk.LEFT, fill=tk.Y)
+        self.files_tree.bind("<<TreeviewSelect>>", self._on_file_tree_select)
+        self.files_tree.bind("<Double-1>", lambda e: self._set_active_from_tree())
+
+        files_btn_frame = ttk.Frame(files_frame)
+        files_btn_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(8, 0))
+
+        ttk.Button(files_btn_frame, text="Set Active",
+                   command=self._set_active_from_tree).pack(fill=tk.X, pady=2)
+        ttk.Button(files_btn_frame, text="Remove",
+                   command=self._remove_selected_file).pack(fill=tk.X, pady=2)
+        ttk.Button(files_btn_frame, text="Remove All",
+                   command=self._remove_all_files).pack(fill=tk.X, pady=2)
+
+        self.overlay_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(files_btn_frame, text="Overlay plots",
+                        variable=self.overlay_var,
+                        command=self._on_overlay_changed).pack(anchor=tk.W, pady=(6, 0))
+
+
         # ALL CONTROLS IN ONE ROW
         controls_row_frame = ttk.Frame(main_control_frame)
         controls_row_frame.pack(fill=tk.X, pady=5)
@@ -186,15 +231,20 @@ class DataTab:
         ttk.Entry(params_frame, textvariable=self.current_threshold_var, width=8).grid(row=1, column=1, padx=2, pady=1)
         
         # Help text (smaller)
-        help_label = ttk.Label(params_frame, text="ℹ️ Affects pulse detection", 
+        help_label = ttk.Label(params_frame, text="ℹ️ Affects pulse detection",
                               font=('Arial', 7), foreground='gray')
         help_label.grid(row=2, column=0, columnspan=2, pady=2)
-        
-        # ==============================
-        # PLOT FRAME - MAXIMIZED SPACE
-        # ==============================
-        plot_frame = ttk.LabelFrame(self.parent, text="Plot Area", padding=5)
-        plot_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        # 5. Active File Indicator (RIGHT of Analysis Parameters)
+        active_file_frame = ttk.LabelFrame(controls_row_frame, text="Active File", padding=5)
+        active_file_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(5, 0))
+
+        self.active_file_label = ttk.Label(active_file_frame,
+                                           text="Active: none",
+                                           foreground="grey",
+                                           font=("Arial", 12))
+        self.active_file_label.pack(anchor=tk.W, padx=2, pady=2)
+
         # ==============================
         # PLOT FRAME - MAXIMIZED SPACE
         # ==============================
@@ -390,6 +440,24 @@ class DataTab:
             self.shared_data['filename'] = filename
             self.shared_data['data_format'] = getattr(data_loader, 'data_format', 'unknown')
             self.shared_data['phase_classified'] = 'cycle_phase' in self.df_raw.columns
+
+            # Multi-file: store record and set as active
+            file_record = {
+                'df_raw':           self.df_raw,
+                'cycle_list':       self.cycle_list,
+                'ici_starts':       self.ici_starts,
+                'plot_data':        self.plot_data,
+                'filename':         filename,
+                'filepath':         filepath,
+                'data_format':      getattr(data_loader, 'data_format', 'unknown'),
+                'phase_classified': 'cycle_phase' in self.df_raw.columns,
+            }
+            # Keyed by full filepath (not basename) so two files sharing the
+            # same filename from different folders don't silently overwrite
+            # each other in the multi-file list.
+            self.loaded_files[filepath] = file_record
+            self._refresh_files_tree()
+            self._set_active_file(filepath)
             
             # Update cycle selector
             self.update_cycle_selector()
@@ -422,6 +490,156 @@ class DataTab:
             import traceback
             traceback.print_exc()
     
+    # ==============================
+    # MULTI-FILE MANAGEMENT
+    # ==============================
+
+    def _refresh_files_tree(self):
+        """Rebuild the Treeview to reflect self.loaded_files."""
+        self.files_tree.delete(*self.files_tree.get_children())
+        for fname, rec in self.loaded_files.items():
+            cycles = len(rec['cycle_list'])
+            points = len(rec['df_raw'])
+            tag = "active" if fname == self.active_file else ""
+            self.files_tree.insert("", tk.END, iid=fname,
+                                   values=(os.path.basename(fname), cycles, f"{points:,}"),
+                                   tags=(tag,))
+        self.files_tree.tag_configure("active", background="#d0eaff")
+
+    def _set_active_file(self, filename):
+        """Push file_record into shared_data and refresh the UI."""
+        if filename not in self.loaded_files:
+            return
+        # Save current file's regression params before switching
+        old_fname = self.shared_data.get('active_file')
+        if old_fname:
+            if 'all_regression_params' not in self.shared_data:
+                self.shared_data['all_regression_params'] = {}
+            self.shared_data['all_regression_params'][old_fname] = \
+                self.shared_data.get('regression_params', {}).copy()
+            
+        rec = self.loaded_files[filename]
+        self.active_file = filename
+
+        self.df_raw       = rec['df_raw']
+        self.cycle_list   = rec['cycle_list']
+        self.ici_starts   = rec['ici_starts']
+        self.plot_data    = rec['plot_data']
+        self.current_file = rec['filename']
+
+        self.shared_data['df_raw']           = rec['df_raw']
+        self.shared_data['cycle_list']       = rec['cycle_list']
+        self.shared_data['ici_starts']       = rec['ici_starts']
+        self.shared_data['plot_data']        = rec['plot_data']
+        self.shared_data['filename']         = rec['filename']
+        self.shared_data['data_format']      = rec['data_format']
+        self.shared_data['phase_classified'] = rec['phase_classified']
+        self.shared_data['loaded_files']     = self.loaded_files
+        self.shared_data['active_file']      = filename
+        # Restore new file's regression params if previously saved
+        all_params = self.shared_data.get('all_regression_params', {})
+        self.shared_data['regression_params'] = all_params.get(filename, {})
+        self.shared_data['overlay']          = self.overlay_var.get()
+
+        self._refresh_files_tree()
+        self.active_file_label.config(
+            text=f"Active: {os.path.basename(filename)}", foreground="darkblue")
+        self.update_cycle_selector()
+        self.update_info_display()
+        self.plot_overview_proper()
+        self.status_label.config(
+            text=f"Active file: {os.path.basename(filename)}  |  "
+                 f"{len(self.cycle_list)} cycles  |  "
+                 f"{len(self.df_raw):,} points")
+
+    def _set_active_from_tree(self):
+        """Set the selected Treeview row as the active file."""
+        sel = self.files_tree.selection()
+        if not sel:
+            messagebox.showwarning("No selection", "Please select a file from the list first.")
+            return
+        self._set_active_file(sel[0])
+
+    def _on_file_tree_select(self, event=None):
+        """Single-click highlights the row; double-click sets active."""
+        pass
+
+    def _remove_selected_file(self):
+        """Remove the selected file(s) from the list."""
+        sel = self.files_tree.selection()
+        if not sel:
+            messagebox.showwarning("No selection", "Please select a file to remove.")
+            return
+        removed_active = False
+        for fname in sel:
+            if fname in self.loaded_files:
+                del self.loaded_files[fname]
+                if self.active_file == fname:
+                    removed_active = True
+        # Refresh the tree right away so the list reflects the removal even
+        # if switching/clearing the active file below hits a problem.
+        self._refresh_files_tree()
+        if removed_active:
+            remaining = list(self.loaded_files.keys())
+            if remaining:
+                self._set_active_file(remaining[-1])
+            else:
+                self._clear_active()
+
+    def _remove_all_files(self):
+        """Remove all loaded files."""
+        if not self.loaded_files:
+            return
+        if messagebox.askyesno("Remove All", "Remove all loaded files?"):
+            self.loaded_files.clear()
+            self._refresh_files_tree()
+            self._clear_active()
+
+    def _clear_active(self):
+        """Reset active file and clear shared_data."""
+        self.active_file  = None
+        self.df_raw       = None
+        self.cycle_list   = []
+        self.ici_starts   = {}
+        self.plot_data    = None
+        self.current_file = None
+
+        self.shared_data['df_raw']       = None
+        self.shared_data['cycle_list']   = []
+        self.shared_data['ici_starts']   = {}
+        self.shared_data['filename']     = None
+        self.shared_data['loaded_files'] = self.loaded_files
+        self.shared_data['active_file']  = None
+        self.shared_data['overlay']      = False
+
+        self.active_file_label.config(text="Active: none", foreground="grey")
+        self.status_label.config(text="Ready - Select a data file to begin")
+        self.ax1.cla()
+        if self.ax2 is not None:
+            self.ax2.cla()
+        self.canvas.draw()
+
+    def _on_overlay_changed(self):
+        """Propagate overlay toggle to shared_data and refresh plot."""
+        self.shared_data['overlay'] = self.overlay_var.get()
+        self.plot_overview_proper()
+
+    def _get_overlay_color(self, file_index):
+        """Return a colour for file_index, with shading for >10 files."""
+        import matplotlib.colors as mcolors
+        colors = self.shared_data.get('overlay_colors', ['#1f77b4'])
+        n = len(colors)
+        base_color = colors[file_index % n]
+        round_num = file_index // n   # 0 = normal, 1 = light, 2 = dark
+        if round_num == 0:
+            return base_color
+        elif round_num == 1:
+            rgb = mcolors.to_rgb(base_color)
+            return tuple(c + (1 - c) * 0.5 for c in rgb)  # lighten
+        else:
+            rgb = mcolors.to_rgb(base_color)
+            return tuple(c * 0.5 for c in rgb)             # darken
+
     def update_info_display(self):
         """Update the information text display"""
         if self.df_raw is None:
@@ -650,10 +868,16 @@ class DataTab:
         This will show ICI start points and proper cycle differentiation
         FIXED: Uses full figure area and prevents shrinking
         """
+        # --- OVERLAY MODE ---
+        if self.overlay_var.get() and len(self.loaded_files) > 1:
+            self.plot_overlay()
+            return
+
         if self.df_raw is None or not self.cycle_list:
             self.ax1.clear()
-            self.ax2.clear()
-            self.ax1.text(0.5, 0.5, 'No data loaded', 
+            if self.ax2 is not None:
+                self.ax2.clear()
+            self.ax1.text(0.5, 0.5, 'No data loaded',
                          ha='center', va='center', transform=self.ax1.transAxes)
             self.canvas.draw()
             return
@@ -823,9 +1047,70 @@ class DataTab:
             import traceback
             traceback.print_exc()
     
-    def plot_overview(self):
-        """Legacy function - now redirects to proper plotting function"""
-        self.plot_overview_proper()
+    def plot_overlay(self):
+        """Plot overview of ALL loaded files on the same axis, one colour per file."""
+        try:
+            # Clear and set up full figure
+            if self.current_colorbar is not None:
+                self.current_colorbar.remove()
+                self.current_colorbar = None
+            self.fig.clear()
+            self.ax1 = self.fig.add_subplot(111)
+            self.ax2 = None
+
+            for i, (fname, rec) in enumerate(self.loaded_files.items()):
+                color = self._get_overlay_color(i)
+                plot_data = rec['plot_data'] if rec['plot_data'] is not None else rec['df_raw']
+                short_name = os.path.basename(fname)
+
+                for j, cycle_num in enumerate(rec['cycle_list']):
+                    cycle_data = plot_data[plot_data['cycle'] == cycle_num]
+                    if len(cycle_data) == 0:
+                        continue
+                    # Only add label on first cycle to avoid legend duplicates
+                    label = short_name if j == 0 else "_nolegend_"
+                    self.ax1.plot(cycle_data['t/s'], cycle_data['E/V'],
+                                color=color, alpha=0.7, linewidth=1.5, label=label)
+
+                    # ICI start marker — same file colour, black edge
+                    if cycle_num in rec['ici_starts']:
+                        start_idx = rec['ici_starts'][cycle_num]
+                        if start_idx in cycle_data.index:
+                            start_point = cycle_data.loc[start_idx]
+                            self.ax1.scatter(start_point['t/s'], start_point['E/V'],
+                                            color=color, s=30, marker='o',
+                                            edgecolor='black', linewidth=1, zorder=5)
+
+            self.ax1.set_xlabel('Time (s)', fontsize=12)
+            self.ax1.set_ylabel('Voltage (V)', fontsize=12)
+            self.ax1.grid(True, alpha=0.3)
+
+            full_title = f'ICI Analysis - Overlay ({len(self.loaded_files)} files)'
+            self._overview_title = full_title
+            if self.show_title_var.get():
+                self.ax1.set_title(full_title, fontsize=14, fontweight='bold')
+
+            legend = self.ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            legend.set_draggable(True)
+            legend.set_zorder(100)
+            legend.get_frame().set_facecolor('white')
+            legend.get_frame().set_alpha(0.9)
+            legend.get_frame().set_edgecolor('black')
+
+            self.fig.tight_layout()
+            self.canvas.draw()
+            self.status_label.config(
+                text=f"Overlay: {len(self.loaded_files)} files, "
+                    f"{sum(len(r['cycle_list']) for r in self.loaded_files.values())} total cycles")
+
+        except Exception as e:
+            self.ax1.clear()
+            self.ax1.text(0.5, 0.5, f'Overlay error:\n{str(e)}',
+                        ha='center', va='center', transform=self.ax1.transAxes)
+            self.canvas.draw()
+            print(f"Overlay error: {e}")
+            import traceback
+            traceback.print_exc()
     
     def get_data(self):
         """Return loaded data for other tabs to use"""

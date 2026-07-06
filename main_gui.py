@@ -36,7 +36,22 @@ class Complete5TabGUI:
             'ici_starts': {},
             'filename': None,
             'phase_classified': False,
-            'regression_params': {}  # IMPORTANT: For Tab 4 → Tab 5 parameter sharing
+            'regression_params': {},  # IMPORTANT: For Tab 4 → Tab 5 parameter sharing
+            # Multi-file overlay support
+            'all_files': {},          # {filename: {'df_raw', 'cycle_list', 'ici_starts'}}
+            'active_file': None,      # filename string of the currently active file
+            'overlay_colors': [       # tab10 base palette — shading handled at plot time
+                '#1f77b4',  # blue
+                '#ff7f0e',  # orange
+                '#2ca02c',  # green
+                '#e6ab02',  # golden yellow
+                '#9467bd',  # purple
+                '#8c564b',  # brown
+                '#e377c2',  # pink
+                '#7f7f7f',  # grey
+                '#bcbd22',  # yellow-green
+                '#17becf',  # cyan
+            ],
         }
         
         # Create main interface
@@ -104,6 +119,7 @@ class Complete5TabGUI:
         
         # Bind tab change event
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+        self.root.bind("<Configure>", self._on_window_resize)
         
         # Test controls at bottom
         self.create_test_controls()
@@ -141,7 +157,30 @@ class Complete5TabGUI:
         
         ttk.Button(test_frame, text="Show Data Status", 
                   command=self.show_data_status).pack(side=tk.LEFT, padx=5, pady=5)
-        
+    
+    def _on_window_resize(self, event=None):
+        """Redraw all tab canvases when window is resized."""
+        if event and event.widget != self.root:
+            return
+        canvases = [
+            getattr(self.data_tab,           'canvas',           None),
+            getattr(self.classification_tab, 'phase_canvas',     None),
+            getattr(self.classification_tab, 'capacity_canvas',  None),
+            getattr(self.pulse_tab,          'canvas',           None),
+            getattr(self.regression_tab,     'charge_canvas',    None),
+            getattr(self.regression_tab,     'discharge_canvas', None),
+            getattr(self.regression_tab,     'multi_canvas',     None),
+            getattr(self.kinetics_tab,       'charge_canvas',    None),
+            getattr(self.kinetics_tab,       'discharge_canvas', None),
+        ]
+        for canvas in canvases:
+            try:
+                if canvas:
+                    canvas.get_tk_widget().update_idletasks()
+                    canvas.draw_idle()
+            except Exception:
+                pass
+
     def on_tab_changed(self, event):
         """Called when user switches tabs"""
         selected_tab = self.notebook.index(self.notebook.select())
@@ -172,15 +211,22 @@ class Complete5TabGUI:
             print("🔄 Refreshing Kinetic tab data...")
             if hasattr(self.kinetics_tab, 'load_shared_data'):
                 self.kinetics_tab.load_shared_data()
-            
+               
+                 
     def update_status_bar(self):
         """Update status bar with current data info"""
         df_raw = self.shared_data.get('df_raw')
         cycle_list = self.shared_data.get('cycle_list', [])
         filename = self.shared_data.get('filename')
-        
+        loaded_files = self.shared_data.get('loaded_files', {})
+
         if df_raw is not None and len(cycle_list) > 0:
-            self.file_label.config(text=filename or "Data loaded", foreground="green")
+            n_files = len(loaded_files)
+            if n_files > 1:
+                display_name = f"{filename} (+{n_files - 1} more)"
+            else:
+                display_name = filename or "Data loaded"
+            self.file_label.config(text=display_name, foreground="green")
             self.cycles_label.config(text=str(len(cycle_list)))
             self.points_label.config(text=str(len(df_raw)))
         else:
@@ -248,7 +294,7 @@ class Complete5TabGUI:
     def clear_all_data(self):
         """Clear all data and reset interface"""
         print("🗑️ Clearing all data...")
-        
+
         # Clear shared data dictionary
         self.shared_data['df_raw'] = None
         self.shared_data['cycle_list'] = []
@@ -256,7 +302,20 @@ class Complete5TabGUI:
         self.shared_data['filename'] = None
         self.shared_data['phase_classified'] = False
         self.shared_data['regression_params'] = {}
-        
+        self.shared_data['all_regression_params'] = {}
+        self.shared_data['file_mass_mg'] = {}
+        self.shared_data['loaded_files'] = {}
+        self.shared_data['active_file'] = None
+
+        # Data tab keeps its own loaded_files dict (a separate reference from
+        # shared_data['loaded_files']) plus its own Treeview — clear those
+        # too, otherwise its file list/UI stays stale after "clearing".
+        if hasattr(self, 'data_tab'):
+            self.data_tab.loaded_files.clear()
+            self.data_tab.active_file = None
+            if hasattr(self.data_tab, '_refresh_files_tree'):
+                self.data_tab._refresh_files_tree()
+
         # Update status bar
         self.update_status_bar()
         
@@ -319,7 +378,11 @@ def main():
     
     print("\nChecking for required files:")
     for file in required_files:
-        exists = os.path.exists(file)
+        # Check relative to the script's own directory, not the process's
+        # current working directory — otherwise launching main_gui.py from
+        # anywhere other than the project root wrongly reports files missing
+        # even though the sys.path-based imports above would have worked fine.
+        exists = os.path.exists(os.path.join(current_dir, file))
         status = "✅" if exists else "❌"
         print(f"  {status} {file}")
         if not exists:
@@ -333,6 +396,17 @@ def main():
     # Create and run the application
     root = tk.Tk()
     app = Complete5TabGUI(root)
+
+        # Start maximized (cross-platform)
+    try:
+        root.state('zoomed')        # Windows
+    except:
+        root.attributes('-zoomed', True)  # Linux
+    
+    # Force window to fully render before mainloop
+    root.update_idletasks()
+    root.update()
+    root.after(500, app._on_window_resize)
     
     print("\n🚀 Application started!")
     print("Load your ICI data file in Tab 1 to begin...\n")

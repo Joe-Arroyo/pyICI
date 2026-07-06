@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import os
-
+from matplotlib.lines import Line2D
 
 # Import the kinetic analyzer module
 import analysis.kinetic_analyzer as ka
@@ -28,6 +28,10 @@ class KineticsTab:
         self.df_raw = None
         self.cycle_list = []
         
+        # Per-file entries for kinetics overlay
+        self.kin_file_vars = {}    # {fname: {'cycles_var': StringVar}}
+        self.kin_file_check_vars = {}  # {fname: BooleanVar}
+
         # Colorbar tracking (CRITICAL for preventing stacking and progressive shrinking)
         # Tracking separate colorbars for R and k axes to allow individual positioning
         self.charge_colorbar_R = None
@@ -61,43 +65,99 @@ class KineticsTab:
     
     def setup_ui(self):
         """Create the UI layout"""
-        # Control panel
+        # Control panel — outer frame
         control_frame = ttk.LabelFrame(self.parent, text="Kinetic Analysis Controls", padding=10)
         control_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        # Available cycles display
-        ttk.Label(control_frame, text="Available Cycles:").grid(row=0, column=0, padx=5, sticky=tk.W)
-        self.available_label = ttk.Label(control_frame, text="", font=('Arial', 9, 'bold'))
-        self.available_label.grid(row=0, column=1, padx=5, sticky=tk.W)
-        
-        # Cycle selection
-        ttk.Label(control_frame, text="Select Cycles:").grid(row=1, column=0, padx=5, sticky=tk.W)
-        self.cycle_entry = ttk.Entry(control_frame, width=30)
-        self.cycle_entry.grid(row=1, column=1, padx=5, sticky=tk.W)
-        self.cycle_entry.insert(0, "1-10")
-        
-        ttk.Button(control_frame, text="Plot R & k", command=self.plot_data).grid(row=1, column=2, padx=10)
-        ttk.Button(control_frame, text="Export Data", command=self.export_data).grid(row=1, column=4, padx=10)
 
-        # Title toggle checkbox
+        # Inner panels row
+        inner_row = ttk.Frame(control_frame)
+        inner_row.pack(side=tk.TOP, anchor=tk.W, pady=(0, 8))
+
+        # ---- Single File panel ----
+        single_panel = ttk.LabelFrame(inner_row, text="Single File", padding=8)
+        single_panel.pack(side=tk.LEFT, padx=(0, 10), anchor=tk.N)
+
+        ttk.Label(single_panel, text="Available Cycles:").grid(row=0, column=0, sticky=tk.W, padx=5)
+        self.available_label = ttk.Label(single_panel, text="", font=('Arial', 9, 'bold'))
+        self.available_label.grid(row=0, column=1, sticky=tk.W, padx=5)
+
+        ttk.Label(single_panel, text="Select Cycles:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        self.cycle_entry = ttk.Entry(single_panel, width=20)
+        self.cycle_entry.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        self.cycle_entry.insert(0, "1-10")
+
+        # ---- Multi-File panel ----
+        multi_panel = ttk.LabelFrame(inner_row, text="Multi-File", padding=8)
+        multi_panel.pack(side=tk.LEFT, anchor=tk.N)
+
+        # Column headers
+        hdr_frame = ttk.Frame(multi_panel)
+        hdr_frame.pack(fill=tk.X, pady=(0, 2))
+        ttk.Label(hdr_frame, text="File", foreground='gray',
+                  width=28).pack(side=tk.LEFT, padx=(20, 0))
+        ttk.Label(hdr_frame, text="Cycles", foreground='gray',
+                  width=8).pack(side=tk.LEFT)
+
+        # Scrollable rows canvas
+        self.kin_files_canvas = tk.Canvas(multi_panel, height=80, width=500, highlightthickness=0)
+        kin_files_scroll = ttk.Scrollbar(multi_panel, orient=tk.VERTICAL,
+                                          command=self.kin_files_canvas.yview)
+        self.kin_files_canvas.configure(yscrollcommand=kin_files_scroll.set)
+        self.kin_files_canvas.pack(side=tk.LEFT, fill=tk.BOTH)
+        kin_files_scroll.pack(side=tk.LEFT, fill=tk.Y)
+
+        self.kin_files_inner = ttk.Frame(self.kin_files_canvas)
+        self.kin_files_canvas.create_window((0, 0), window=self.kin_files_inner, anchor='nw')
+        self.kin_files_inner.bind('<Configure>', lambda e: self.kin_files_canvas.configure(
+            scrollregion=self.kin_files_canvas.bbox('all')))
+
+        # Overlay checkbox
+        self.kin_overlay_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(multi_panel, text="Overlay selected files",
+                        variable=self.kin_overlay_var,
+                        command=self._on_kin_overlay_toggled).pack(anchor=tk.W, pady=(6, 0))
+
+        # ---- Bottom bar: buttons + checkbox + feedback ----
+        bottom_bar = ttk.Frame(control_frame)
+        bottom_bar.pack(side=tk.TOP, fill=tk.X, pady=(4, 0))
+
+        ttk.Button(bottom_bar, text="Plot R & k",
+                   command=self.plot_data).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(bottom_bar, text="Export Data",
+                   command=self.export_data).pack(side=tk.LEFT, padx=5)
+
         self.show_title_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(control_frame, text="Show plot titles", 
+        ttk.Checkbutton(bottom_bar, text="Show plot titles",
                         variable=self.show_title_var,
-                        command=self.refresh_plots).grid(row=1, column=3, padx=15)
-        
-        # Feedback label
-        self.feedback_label = ttk.Label(control_frame, text="", foreground="blue")
-        self.feedback_label.grid(row=2, column=0, columnspan=4, padx=5, pady=5, sticky=tk.W)
-        
+                        command=self.refresh_plots).pack(side=tk.LEFT, padx=15)
+
+        # X-axis selector: Voltage / Capacity / Specific Capacity.
+        # Capacity values come from Classification tab's capacity-vs-voltage
+        # curve (via analysis.kinetic_analyzer.match_capacity_to_voltage) —
+        # no separate mass field here, mass is read from shared_data['file_mass_mg'].
+        ttk.Label(bottom_bar, text="X-axis:").pack(side=tk.LEFT, padx=(15, 2))
+        self.xaxis_var = tk.StringVar(value="Voltage (V)")
+        xaxis_combo = ttk.Combobox(bottom_bar, textvariable=self.xaxis_var,
+                     values=["Voltage (V)", "Capacity (mAh)", "Specific Capacity (mAh/g)"],
+                     width=22, state='readonly')
+        xaxis_combo.pack(side=tk.LEFT, padx=5)
+        xaxis_combo.bind('<<ComboboxSelected>>', self._on_xaxis_changed)
+
+        self.feedback_label = ttk.Label(bottom_bar, text="", foreground="blue")
+        self.feedback_label.pack(side=tk.LEFT, padx=5)
+
         # Plot frame
         plot_frame = ttk.Frame(self.parent)
         plot_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
+        plot_frame.columnconfigure(0, weight=1, uniform="kinetic")
+        plot_frame.columnconfigure(1, weight=1, uniform="kinetic")
+        plot_frame.rowconfigure(0, weight=1)
+
         # ==============================
         # CHARGE SECTION (LEFT SIDE)
         # ==============================
         charge_main_frame = ttk.LabelFrame(plot_frame, text="Charge Analysis", padding=5)
-        charge_main_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        charge_main_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=0)
         
         # Charge controls frame (axis limits + export side by side)
         charge_controls_frame = ttk.Frame(charge_main_frame)
@@ -218,7 +278,7 @@ class KineticsTab:
         # DISCHARGE SECTION (RIGHT SIDE)
         # ==============================
         discharge_main_frame = ttk.LabelFrame(plot_frame, text="Discharge Analysis", padding=5)
-        discharge_main_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        discharge_main_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=0)
         
         # Discharge controls frame (axis limits + export side by side)
         discharge_controls_frame = ttk.Frame(discharge_main_frame)
@@ -900,13 +960,124 @@ class KineticsTab:
         except Exception as e:
             messagebox.showerror("Export Error", f"Error exporting {phase_name} figure:\n{str(e)}")
     
+    def _get_overlay_color(self, file_index):
+        """Return colour for file_index from shared palette."""
+        import matplotlib.colors as mcolors
+        colors = self.shared_data.get('overlay_colors', ['#1f77b4'])
+        n = len(colors)
+        base_color = colors[file_index % n]
+        round_num = file_index // n
+        if round_num == 0:
+            return base_color
+        elif round_num == 1:
+            rgb = mcolors.to_rgb(base_color)
+            return tuple(c + (1 - c) * 0.5 for c in rgb)
+        else:
+            rgb = mcolors.to_rgb(base_color)
+            return tuple(c * 0.5 for c in rgb)
+
+    def _get_cycle_shade(self, base_color, cycle_index, total_cycles):
+        """Light shade for early cycles, dark for later ones."""
+        import matplotlib.colors as mcolors
+        rgb = mcolors.to_rgb(base_color)
+        t = cycle_index / max(total_cycles - 1, 1)
+        if t < 0.5:
+            blend = 1 - t * 2
+            return tuple(c + (1 - c) * blend * 0.6 for c in rgb)
+        else:
+            blend = (t - 0.5) * 2
+            return tuple(c * (1 - blend * 0.4) for c in rgb)
+
+    def _refresh_kin_files_panel(self):
+        """Rebuild the multi-file panel rows."""
+        loaded = self.shared_data.get('loaded_files', {})
+        active = self.shared_data.get('active_file', None)
+        colors = self.shared_data.get('overlay_colors', [])
+        n_colors = len(colors)
+
+        for widget in self.kin_files_inner.winfo_children():
+            widget.destroy()
+
+        existing_vars = self.kin_file_vars.copy()
+        existing_checks = self.kin_file_check_vars.copy()
+        self.kin_file_vars = {}
+        self.kin_file_check_vars = {}
+
+        for i, (fname, rec) in enumerate(loaded.items()):
+            color = colors[i % n_colors] if n_colors else '#1f77b4'
+            short = os.path.basename(fname)
+            is_active = (fname == active)
+
+            row = ttk.Frame(self.kin_files_inner)
+            row.pack(fill=tk.X, pady=1)
+
+            # Checkbox
+            check_var = existing_checks.get(fname, tk.BooleanVar(value=True))
+            self.kin_file_check_vars[fname] = check_var
+            ttk.Checkbutton(row, variable=check_var).pack(side=tk.LEFT)
+
+            # Colour dot
+            dot = tk.Canvas(row, width=10, height=10, highlightthickness=0)
+            dot.pack(side=tk.LEFT, padx=(2, 4))
+            dot.create_oval(1, 1, 9, 9, fill=color, outline=color)
+
+            # Filename label
+            lbl_text = f"► {short}" if is_active else f"   {short}"
+            lbl = ttk.Label(row, text=lbl_text, width=28,
+                            foreground='darkblue' if is_active else '',
+                            font=('TkDefaultFont', 9, 'bold' if is_active else 'normal'))
+            lbl.pack(side=tk.LEFT, padx=(0, 4))
+            lbl.bind('<Button-1>', lambda e, f=fname: self._set_kin_active_file(f))
+
+            # Cycles entry
+            if fname in existing_vars:
+                cycles_var = existing_vars[fname]['cycles_var']
+            else:
+                default_cycles = f"{min(rec['cycle_list'])}-{max(rec['cycle_list'])}" \
+                    if rec['cycle_list'] else ''
+                cycles_var = tk.StringVar(value=default_cycles)
+            self.kin_file_vars[fname] = {'cycles_var': cycles_var}
+            ttk.Entry(row, textvariable=cycles_var, width=14).pack(side=tk.LEFT)
+
+    def _set_kin_active_file(self, fname):
+        """Set active file from kinetics panel click."""
+        loaded = self.shared_data.get('loaded_files', {})
+        if fname not in loaded:
+            return
+        rec = loaded[fname]
+        # Snapshot the outgoing active file's regression_params before
+        # switching — otherwise switching active file from this panel
+        # (rather than Data Tab) silently drops it.
+        old_fname = self.shared_data.get('active_file')
+        if old_fname and old_fname != fname:
+            self.shared_data.setdefault('all_regression_params', {})[old_fname] = \
+                self.shared_data.get('regression_params', {}).copy()
+        self.shared_data['active_file'] = fname
+        self.shared_data['df_raw']      = rec['df_raw']
+        self.shared_data['cycle_list']  = rec['cycle_list']
+        self.shared_data['filename']    = rec['filename']
+        all_params = self.shared_data.get('all_regression_params', {})
+        self.shared_data['regression_params'] = all_params.get(fname, {})
+        self.df_raw     = rec['df_raw']
+        self.cycle_list = rec['cycle_list']
+        ka.df_raw = self.df_raw
+        ka.cycle_list = self.cycle_list
+        self._refresh_kin_files_panel()
+        self.update_status(f"Active: {os.path.basename(fname)}  |  {len(self.cycle_list)} cycles")
+
     def load_shared_data(self):
         """Load data from shared_data"""
         try:
             if 'df_raw' not in self.shared_data or self.shared_data['df_raw'] is None:
+                # Reset stale state so this tab doesn't keep operating on
+                # already-removed data (e.g. after Data tab's "Remove All").
+                self.df_raw = None
+                self.cycle_list = []
                 self.update_status("No data loaded. Please load data in Tab 1 first.", error=True)
+                if hasattr(self, 'kin_files_inner'):
+                    self._refresh_kin_files_panel()
                 return
-            
+
             self.df_raw = self.shared_data['df_raw']
             self.cycle_list = self.shared_data.get('cycle_list', [])
             
@@ -919,11 +1090,25 @@ class KineticsTab:
             
             # Display available cycles
             if self.cycle_list:
-                available_text = f"{min(self.cycle_list)}-{max(self.cycle_list)}"
+                lo, hi = int(min(self.cycle_list)), int(max(self.cycle_list))
+                available_text = f"{lo}-{hi}"
                 self.available_label.config(text=available_text)
                 self.update_status(f"Loaded {len(self.cycle_list)} cycles")
+
+                # The cycle entry ships with a hardcoded "1-10" default (assumes
+                # 1-indexed cycles), but cycles are 0-indexed - a file with 10
+                # cycles is numbered 0-9, so leaving the default untouched
+                # silently drops cycle 0 and includes a nonexistent cycle 10.
+                # Only overwrite it if it's still that untouched default (or
+                # empty), so a user's own custom cycle selection is preserved.
+                if self.cycle_entry.get().strip() in ("", "1-10"):
+                    self.cycle_entry.delete(0, tk.END)
+                    self.cycle_entry.insert(0, available_text)
             else:
                 self.update_status("No cycles found", error=True)
+            
+            if hasattr(self, 'kin_files_inner'):
+                self._refresh_kin_files_panel()
                 
         except Exception as e:
             self.update_status(f"Error loading data: {str(e)}", error=True)
@@ -944,11 +1129,12 @@ class KineticsTab:
                 self.charge_ax_R.set_title('')
             
             # FIX 1 & 2: Axis labels with absolute notation
+            charge_xlabel = getattr(self, '_charge_xlabel', 'Voltage (V)')
             self.charge_ax_R.set_ylabel(r'Internal resistance, $R$ ($\Omega$)', fontsize=12)  # Updated
-            self.charge_ax_R.set_xlabel('Voltage (V)', fontsize=12) 
-            self.charge_ax_k.set_xlabel('Voltage (V)', fontsize=12)
+            self.charge_ax_R.set_xlabel(charge_xlabel, fontsize=12)
+            self.charge_ax_k.set_xlabel(charge_xlabel, fontsize=12)
             self.charge_ax_k.set_ylabel(r'$k$ ($\Omega \cdot s^{-0.5}$)', fontsize=12)  # Updated
-            
+
             # --- Discharge Plot Updates ---
             if self.show_title_var.get():
                 if hasattr(self, '_discharge_title'):
@@ -956,16 +1142,80 @@ class KineticsTab:
             else:
                 self._discharge_title = self.discharge_ax_R.get_title()
                 self.discharge_ax_R.set_title('')
-            
+
             # FIX 1 & 2: Axis labels with absolute notation
+            discharge_xlabel = getattr(self, '_discharge_xlabel', 'Voltage (V)')
             self.discharge_ax_R.set_ylabel(r'Internal resistance, $R$ ($\Omega$)', fontsize=12)  # Updated
-            self.discharge_ax_R.set_xlabel('Voltage (V)', fontsize=12) 
-            self.discharge_ax_k.set_xlabel('Voltage (V)', fontsize=12)
+            self.discharge_ax_R.set_xlabel(discharge_xlabel, fontsize=12)
+            self.discharge_ax_k.set_xlabel(discharge_xlabel, fontsize=12)
             self.discharge_ax_k.set_ylabel(r'$k$ ($\Omega \cdot s^{-0.5}$)', fontsize=12)  # Updated
             
             # Redraw canvases
             self.charge_canvas.draw()
             self.discharge_canvas.draw()
+
+    def _get_effective_all_regression_params(self):
+        """all_regression_params, with the currently active file's *live*
+        regression_params merged in.
+
+        data_tab.py only copies a file's regression_params into
+        all_regression_params when switching *away* from it, so the file
+        that's currently active is otherwise invisible to overlay mode even
+        though its checkbox may be ticked. This merge closes that gap
+        without requiring the user to switch away and back first.
+        """
+        all_reg = dict(self.shared_data.get('all_regression_params', {}))
+        active_fname = self.shared_data.get('active_file')
+        live_params = self.shared_data.get('regression_params', {})
+        if active_fname and live_params:
+            all_reg[active_fname] = live_params
+        return all_reg
+
+    def _on_xaxis_changed(self, event=None):
+        """Re-plot automatically when the X-axis selection changes, but only
+        if a plot already exists — avoids popping up 'no data'/'no mass'
+        warnings just from browsing the dropdown before anything's plotted."""
+        has_existing_plot = (len(self.charge_ax_R.lines) > 0
+                              or len(self.discharge_ax_R.lines) > 0)
+        if has_existing_plot:
+            self.plot_data()
+
+    def _on_kin_overlay_toggled(self):
+        """Re-plot immediately when 'Overlay selected files' is checked/
+        unchecked, instead of requiring another click on a Plot button."""
+        has_existing_plot = (len(self.charge_ax_R.lines) > 0
+                              or len(self.discharge_ax_R.lines) > 0)
+        if has_existing_plot:
+            self.plot_data()
+
+    def _sort_by_x(self, x, *arrays):
+        """Sort x and any number of parallel arrays by x ascending.
+
+        The connecting line in errorbar() is drawn in whatever order the
+        arrays are given — pulse order, not x-order. That's fine for Voltage
+        (roughly monotonic with pulse order already), but Capacity/Specific
+        Capacity come from a nearest-voltage match that isn't guaranteed to
+        be monotonic pulse-to-pulse (ICI's relaxation/IR-drop behavior means
+        pre-pulse voltage can dip back down), so the line can fold backward
+        without this sort even though every point itself is still valid.
+        """
+        order = np.argsort(x)
+        return (x[order],) + tuple(a[order] for a in arrays)
+
+    def _get_xaxis_choice(self):
+        """Return (result_dict_key, axis_label) for the current X-axis selection."""
+        choice = self.xaxis_var.get()
+        if choice.startswith('Specific'):
+            return 'specific_capacity', 'Specific Capacity (mAh/g)'
+        elif choice.startswith('Capacity'):
+            return 'capacity', 'Capacity (mAh)'
+        return 'voltages', 'Voltage (V)'
+
+    def _get_mass_for_file(self, fname):
+        """Look up the sample mass (mg) entered for `fname` in Classification
+        tab's Capacity vs Voltage subtab. Returns 0 (absolute capacity) if
+        that file has no mass on record yet."""
+        return self.shared_data.get('file_mass_mg', {}).get(fname, 0.0)
 
     def parse_and_validate_cycles(self):
         """Parse cycle input and validate"""
@@ -985,6 +1235,12 @@ class KineticsTab:
     
     def plot_data(self):
         """Plot R & k data for selected cycles"""
+        # Overlay mode — bypass single file logic entirely
+        if self.kin_overlay_var.get() and \
+                len(self._get_effective_all_regression_params()) > 0:
+            self.plot_overlay()
+            return
+
         if self.df_raw is None:
             messagebox.showwarning("No Data", "Please load data first")
             return
@@ -1001,18 +1257,27 @@ class KineticsTab:
                 "The kinetic analysis uses the regression parameters.")
             return
         
+        x_key, _ = self._get_xaxis_choice()
+        mass_mg = self._get_mass_for_file(self.shared_data.get('active_file'))
+        if x_key == 'specific_capacity' and mass_mg <= 0:
+            messagebox.showwarning("No Mass Set",
+                "No sample mass has been entered for this file yet.\n\n"
+                "Go to Classification tab → Capacity vs Voltage, enter the mass, "
+                "and plot capacity there once, then come back here.")
+            return
+
         try:
             self.update_status("Computing R & k values...")
-            
+
             # Get saved regression parameters
             saved_params = self.shared_data.get('regression_params', {})
-            
+
             # Plot charge
-            self.plot_charge(selected_cycles, saved_params)
-            
+            self.plot_charge(selected_cycles, saved_params, mass_mg)
+
             # Plot discharge
-            self.plot_discharge(selected_cycles, saved_params)
-            
+            self.plot_discharge(selected_cycles, saved_params, mass_mg)
+
             self.update_status(f"Plotted R & k for {len(selected_cycles)} cycles")
             
         except Exception as e:
@@ -1021,8 +1286,229 @@ class KineticsTab:
             traceback.print_exc()
             messagebox.showerror("Plot Error", f"Error creating plots:\n{str(e)}")
     
-    def plot_charge(self, selected_cycles, saved_params):
+    def plot_overlay(self):
+        """Plot R & k for all selected files, one colour per file, shaded by cycle."""
+        x_key, x_label = self._get_xaxis_choice()
+        self._charge_xlabel = x_label
+        self._discharge_xlabel = x_label
+        all_reg = self._get_effective_all_regression_params()
+        loaded = self.shared_data.get('loaded_files', {})
+
+        # Filter to checked files only
+        selected_files = {fname: params for fname, params in all_reg.items()
+                          if self.kin_file_check_vars.get(fname, tk.BooleanVar(value=True)).get()
+                          and params}
+
+        if not selected_files:
+            checked_fnames = [f for f, v in self.kin_file_check_vars.items() if v.get()]
+            if not checked_fnames:
+                detail = "No files are checked in the Multi-File panel."
+            else:
+                lines = []
+                for f in checked_fnames:
+                    short = os.path.basename(f)
+                    n_params = len(all_reg.get(f, {}))
+                    lines.append(f"  • {short}: {n_params} saved regression parameter(s)")
+                detail = ("Checked files and their saved regression parameter count:\n"
+                          + "\n".join(lines)
+                          + "\n\nEach file needs at least one saved regression parameter "
+                            "(Regression tab → save a fit) before it can appear in overlay.")
+            messagebox.showwarning("No Files Selected", detail)
+            self.update_status("Overlay: no checked file has saved regression parameters", error=True)
+            return
+
+        # Clear colorbars and axes
+        for cb in [self.charge_colorbar_R, self.charge_colorbar_k,
+                   self.discharge_colorbar_R, self.discharge_colorbar_k]:
+            if cb is not None:
+                try:
+                    cb.remove()
+                except Exception:
+                    pass
+        self.charge_colorbar_R = self.charge_colorbar_k = None
+        self.discharge_colorbar_R = self.discharge_colorbar_k = None
+
+        try:
+            self.charge_fig.delaxes(self.charge_ax_R)
+            self.charge_fig.delaxes(self.charge_ax_k)
+        except Exception:
+            pass
+        try:
+            self.discharge_fig.delaxes(self.discharge_ax_R)
+            self.discharge_fig.delaxes(self.discharge_ax_k)
+        except Exception:
+            pass
+
+        self.charge_ax_R    = self.charge_fig.add_subplot(211)
+        self.charge_ax_k    = self.charge_fig.add_subplot(212)
+        self.discharge_ax_R = self.discharge_fig.add_subplot(211)
+        self.discharge_ax_k = self.discharge_fig.add_subplot(212)
+
+        charge_legend    = []
+        discharge_legend = []
+        skipped_no_mass  = []
+
+        orig_keys = list(all_reg.keys())
+
+        for fname, saved_params in selected_files.items():
+            orig_idx = orig_keys.index(fname)
+            base_color = self._get_overlay_color(orig_idx)
+            short = os.path.basename(fname)
+            rec = loaded.get(fname)
+            if rec is None:
+                continue
+
+            # Get cycles for this file from the panel entry
+            file_vars = self.kin_file_vars.get(fname, {})
+            try:
+                cycles_str = file_vars['cycles_var'].get() if file_vars else ''
+                selected_cycles = ka.parse_cycle_input(cycles_str, rec['cycle_list']) \
+                    if cycles_str else rec['cycle_list']
+            except Exception:
+                selected_cycles = rec['cycle_list']
+
+            if not selected_cycles:
+                continue
+
+            total_cycles = len(selected_cycles)
+
+            # Sync ka with this file's data
+            ka.df_raw = rec['df_raw']
+            ka.cycle_list = rec['cycle_list']
+
+            mass_mg = self._get_mass_for_file(fname)
+            if x_key == 'specific_capacity' and mass_mg <= 0:
+                # No mass on record for this file — skip it rather than plot a
+                # column of NaNs; other checked files still get plotted.
+                skipped_no_mass.append(short)
+                continue
+
+            # --- CHARGE ---
+            charge_results = ka.compute_R_k_for_cycles(
+                selected_cycles, 'charge', ka.DEFAULT_R1S, ka.DEFAULT_R1L, saved_params, mass_mg)
+
+            for idx, result in enumerate(charge_results):
+                x_vals   = result[x_key]
+                R_vals   = np.abs(result['R'])
+                R_errs   = np.abs(result['R_err'])
+                k_vals   = np.abs(result['k'])
+                k_errs   = np.abs(result['k_err'])
+                cycle_num = result['cycle']
+
+                valid_mask = ~(np.isnan(x_vals) | np.isnan(R_vals) | np.isnan(k_vals))
+                if not np.any(valid_mask):
+                    continue
+
+                color = self._get_cycle_shade(base_color, idx, total_cycles)
+                label = f"{short} C{cycle_num}"
+
+                x_plot, R_plot, R_err_plot, k_plot, k_err_plot = self._sort_by_x(
+                    x_vals[valid_mask], R_vals[valid_mask], R_errs[valid_mask],
+                    k_vals[valid_mask], k_errs[valid_mask])
+
+                self.charge_ax_R.errorbar(x_plot, R_plot,
+                                           yerr=R_err_plot, fmt='o-',
+                                           color=color, label=label,
+                                           markersize=4, alpha=0.8, capsize=2)
+                self.charge_ax_k.errorbar(x_plot, k_plot,
+                                           yerr=k_err_plot, fmt='o-',
+                                           color=color, label='_nolegend_',
+                                           markersize=4, alpha=0.8, capsize=2)
+
+            if charge_results:
+                charge_legend.append(
+                    Line2D([0], [0], color=base_color, marker='o',
+                           label=f"{short} (charge)", markersize=6))
+
+            # --- DISCHARGE ---
+            discharge_results = ka.compute_R_k_for_cycles(
+                selected_cycles, 'discharge', ka.DEFAULT_R1S, ka.DEFAULT_R1L, saved_params, mass_mg)
+
+            for idx, result in enumerate(discharge_results):
+                x_vals   = result[x_key]
+                R_vals   = np.abs(result['R'])
+                R_errs   = np.abs(result['R_err'])
+                k_vals   = np.abs(result['k'])
+                k_errs   = np.abs(result['k_err'])
+                cycle_num = result['cycle']
+
+                valid_mask = ~(np.isnan(x_vals) | np.isnan(R_vals) | np.isnan(k_vals))
+                if not np.any(valid_mask):
+                    continue
+
+                color = self._get_cycle_shade(base_color, idx, total_cycles)
+                label = f"{short} C{cycle_num}"
+
+                x_plot, R_plot, R_err_plot, k_plot, k_err_plot = self._sort_by_x(
+                    x_vals[valid_mask], R_vals[valid_mask], R_errs[valid_mask],
+                    k_vals[valid_mask], k_errs[valid_mask])
+
+                self.discharge_ax_R.errorbar(x_plot, R_plot,
+                                              yerr=R_err_plot, fmt='s--',
+                                              color=color, label=label,
+                                              markersize=4, alpha=0.8, capsize=2)
+                self.discharge_ax_k.errorbar(x_plot, k_plot,
+                                              yerr=k_err_plot, fmt='s--',
+                                              color=color, label='_nolegend_',
+                                              markersize=4, alpha=0.8, capsize=2)
+
+            if discharge_results:
+                discharge_legend.append(
+                    Line2D([0], [0], color=base_color, marker='s', linestyle='--',
+                           label=f"{short} (discharge)", markersize=6))
+
+        # --- Formatting charge ---
+        if self.show_title_var.get():
+            self.charge_ax_R.set_title('Charge — Overlay', fontsize=13,
+                                        fontweight='bold', color='blue')
+        self.charge_ax_R.set_ylabel(r'Internal resistance, $R$ ($\Omega$)', fontsize=12)
+        self.charge_ax_R.set_xlabel(x_label, fontsize=12)
+        self.charge_ax_R.grid(True, alpha=0.3)
+        self.charge_ax_k.set_ylabel(r'$k$ ($\Omega \cdot s^{-0.5}$)', fontsize=12)
+        self.charge_ax_k.set_xlabel(x_label, fontsize=12)
+        self.charge_ax_k.grid(True, alpha=0.3)
+
+        if charge_legend:
+            leg = self.charge_ax_R.legend(handles=charge_legend, fontsize=8,
+                                           bbox_to_anchor=(1.05, 1), loc='upper left')
+            leg.set_draggable(True)
+            leg.get_frame().set_facecolor('white')
+            leg.get_frame().set_alpha(0.9)
+
+        # --- Formatting discharge ---
+        if self.show_title_var.get():
+            self.discharge_ax_R.set_title('Discharge — Overlay', fontsize=13,
+                                           fontweight='bold', color='red')
+        self.discharge_ax_R.set_ylabel(r'Internal resistance, $R$ ($\Omega$)', fontsize=12)
+        self.discharge_ax_R.set_xlabel(x_label, fontsize=12)
+        self.discharge_ax_R.grid(True, alpha=0.3)
+        self.discharge_ax_k.set_ylabel(r'$k$ ($\Omega \cdot s^{-0.5}$)', fontsize=12)
+        self.discharge_ax_k.set_xlabel(x_label, fontsize=12)
+        self.discharge_ax_k.grid(True, alpha=0.3)
+
+        if discharge_legend:
+            leg = self.discharge_ax_R.legend(handles=discharge_legend, fontsize=8,
+                                              bbox_to_anchor=(1.05, 1), loc='upper left')
+            leg.set_draggable(True)
+            leg.get_frame().set_facecolor('white')
+            leg.get_frame().set_alpha(0.9)
+
+        self.charge_fig.tight_layout()
+        self.discharge_fig.tight_layout()
+        self.charge_canvas.draw()
+        self.discharge_canvas.draw()
+
+        if skipped_no_mass:
+            self.update_status(
+                f"Overlay: {len(selected_files) - len(skipped_no_mass)} files plotted, "
+                f"skipped (no mass): {', '.join(skipped_no_mass)}", error=True)
+        else:
+            self.update_status(f"Overlay: {len(selected_files)} files plotted")
+
+    def plot_charge(self, selected_cycles, saved_params, mass_mg=0):
         """Plot charge R & k with SMART COLORMAP SYSTEM (consistent layout)"""
+        x_key, x_label = self._get_xaxis_choice()
+        self._charge_xlabel = x_label
         
         # CRITICAL FIX 1: Remove old colorbars FIRST, BEFORE clearing axes
         # This prevents progressive shrinking from stacked colorbars
@@ -1055,9 +1541,10 @@ class KineticsTab:
             'charge',
             ka.DEFAULT_R1S,
             ka.DEFAULT_R1L,
-            saved_params
+            saved_params,
+            mass_mg
         )
-        
+
         if not charge_results:
             self.charge_ax_R.text(0.5, 0.5, 'No charge data', 
                                 ha='center', va='center', 
@@ -1073,18 +1560,18 @@ class KineticsTab:
         use_colorbar = (num_cycles > 10)
         
         for idx, result in enumerate(charge_results):
-            voltages = result['voltages']
+            x_vals = result[x_key]
             R_vals = result['R']
             R_errs = result['R_err']
             k_vals = result['k']
             k_errs = result['k_err']
             cycle_num = result['cycle']
-            
-            valid_mask = ~(np.isnan(voltages) | np.isnan(R_vals) | np.isnan(k_vals))
-            
+
+            valid_mask = ~(np.isnan(x_vals) | np.isnan(R_vals) | np.isnan(k_vals))
+
             if not np.any(valid_mask):
                 continue
-            
+
             # Color calculation
             if use_colorbar:
                 min_c = min(selected_cycles)
@@ -1093,7 +1580,7 @@ class KineticsTab:
                     cycle_normalized = 0
                 else:
                     cycle_normalized = (cycle_num - min_c) / (max_c - min_c)
-                    
+
                 color_intensity = 0.4 + 0.6 * cycle_normalized  # Keep 0.4+0.6 range for Blues
                 color = charge_cmap(color_intensity)
                 # No label when using colorbar
@@ -1107,18 +1594,23 @@ class KineticsTab:
                 label_suffix = f' C{cycle_num}' if num_cycles > 1 else ''
                 label_R = f'R{label_suffix}'
                 label_k = f'k{label_suffix}'
-            
+
             # MODIFIED: Use absolute values for R, k, and their error bars
             R_vals_abs = np.abs(R_vals[valid_mask])
             R_errs_abs = np.abs(R_errs[valid_mask])
             k_vals_abs = np.abs(k_vals[valid_mask])
             k_errs_abs = np.abs(k_errs[valid_mask])
-            
+
+            # Sort by x so the connecting line progresses monotonically
+            # instead of following pulse order (see _sort_by_x docstring)
+            x_plot, R_plot, R_err_plot, k_plot, k_err_plot = self._sort_by_x(
+                x_vals[valid_mask], R_vals_abs, R_errs_abs, k_vals_abs, k_errs_abs)
+
             # Plot R with absolute values and absolute error bars
             self.charge_ax_R.errorbar(
-                voltages[valid_mask],
-                R_vals_abs,  # Absolute values
-                yerr=R_errs_abs,  # Absolute error bars
+                x_plot,
+                R_plot,  # Absolute values
+                yerr=R_err_plot,  # Absolute error bars
                 fmt='o-',
                 color=color,
                 label=label_R,
@@ -1126,12 +1618,12 @@ class KineticsTab:
                 alpha=0.8,
                 capsize=3
             )
-            
+
             # Plot k with absolute values and absolute error bars
             self.charge_ax_k.errorbar(
-                voltages[valid_mask],
-                k_vals_abs,  # Absolute values
-                yerr=k_errs_abs,  # Absolute error bars
+                x_plot,
+                k_plot,  # Absolute values
+                yerr=k_err_plot,  # Absolute error bars
                 fmt='o-',
                 color=color,
                 label=label_k,
@@ -1153,9 +1645,9 @@ class KineticsTab:
         # FIX 1 & 2: Axis labels
         self.charge_ax_R.set_ylabel(r'Internal resistance, $R$ ($\Omega$)', fontsize=12)
         self.charge_ax_R.grid(True, alpha=0.3)
-        self.charge_ax_R.set_xlabel('Voltage (V)', fontsize=12) 
-        
-        self.charge_ax_k.set_xlabel('Voltage (V)', fontsize=12)
+        self.charge_ax_R.set_xlabel(x_label, fontsize=12)
+
+        self.charge_ax_k.set_xlabel(x_label, fontsize=12)
         self.charge_ax_k.set_ylabel(r'$k$ ($\Omega \cdot s^{-0.5}$)', fontsize=12)
         self.charge_ax_k.grid(True, alpha=0.3)
         
@@ -1242,8 +1734,10 @@ class KineticsTab:
         # Draw without tight_layout (space already reserved by subplots_adjust)
         self.charge_canvas.draw()
                     
-    def plot_discharge(self, selected_cycles, saved_params):
+    def plot_discharge(self, selected_cycles, saved_params, mass_mg=0):
         """Plot discharge R & k with SMART COLORMAP SYSTEM (consistent layout)"""
+        x_key, x_label = self._get_xaxis_choice()
+        self._discharge_xlabel = x_label
         
         # CRITICAL FIX 1: Remove old colorbars FIRST, BEFORE clearing axes
         # This prevents progressive shrinking from stacked colorbars
@@ -1276,9 +1770,10 @@ class KineticsTab:
             'discharge',
             ka.DEFAULT_R1S,
             ka.DEFAULT_R1L,
-            saved_params
+            saved_params,
+            mass_mg
         )
-        
+
         if not discharge_results:
             self.discharge_ax_R.text(0.5, 0.5, 'No discharge data',
                                     ha='center', va='center',
@@ -1294,18 +1789,18 @@ class KineticsTab:
         use_colorbar = (num_cycles > 10)
         
         for idx, result in enumerate(discharge_results):
-            voltages = result['voltages']
+            x_vals = result[x_key]
             R_vals = result['R']
             R_errs = result['R_err']
             k_vals = result['k']
             k_errs = result['k_err']
             cycle_num = result['cycle']
-            
-            valid_mask = ~(np.isnan(voltages) | np.isnan(R_vals) | np.isnan(k_vals))
-            
+
+            valid_mask = ~(np.isnan(x_vals) | np.isnan(R_vals) | np.isnan(k_vals))
+
             if not np.any(valid_mask):
                 continue
-            
+
             # Color calculation
             if use_colorbar:
                 min_c = min(selected_cycles)
@@ -1314,7 +1809,7 @@ class KineticsTab:
                     cycle_normalized = 0
                 else:
                     cycle_normalized = (cycle_num - min_c) / (max_c - min_c)
-                    
+
                 color_intensity = 0.4 + 0.6 * cycle_normalized  # Keep 0.4+0.6 range for Reds
                 color = discharge_cmap(color_intensity)
                 # No label when using colorbar
@@ -1328,18 +1823,23 @@ class KineticsTab:
                 label_suffix = f' C{cycle_num}' if num_cycles > 1 else ''
                 label_R = f'R{label_suffix}'
                 label_k = f'k{label_suffix}'
-            
+
             # MODIFIED: Use absolute values for R, k, and their error bars
             R_vals_abs = np.abs(R_vals[valid_mask])
             R_errs_abs = np.abs(R_errs[valid_mask])
             k_vals_abs = np.abs(k_vals[valid_mask])
             k_errs_abs = np.abs(k_errs[valid_mask])
-            
+
+            # Sort by x so the connecting line progresses monotonically
+            # instead of following pulse order (see _sort_by_x docstring)
+            x_plot, R_plot, R_err_plot, k_plot, k_err_plot = self._sort_by_x(
+                x_vals[valid_mask], R_vals_abs, R_errs_abs, k_vals_abs, k_errs_abs)
+
             # Plot R with absolute values and absolute error bars
             self.discharge_ax_R.errorbar(
-                voltages[valid_mask],
-                R_vals_abs,  # Absolute values
-                yerr=R_errs_abs,  # Absolute error bars
+                x_plot,
+                R_plot,  # Absolute values
+                yerr=R_err_plot,  # Absolute error bars
                 fmt='s-',
                 color=color,
                 label=label_R,
@@ -1347,12 +1847,12 @@ class KineticsTab:
                 alpha=0.8,
                 capsize=3
             )
-            
+
             # Plot k with absolute values and absolute error bars
             self.discharge_ax_k.errorbar(
-                voltages[valid_mask],
-                k_vals_abs,  # Absolute values
-                yerr=k_errs_abs,  # Absolute error bars
+                x_plot,
+                k_plot,  # Absolute values
+                yerr=k_err_plot,  # Absolute error bars
                 fmt='s-',
                 color=color,
                 label=label_k,
@@ -1374,9 +1874,9 @@ class KineticsTab:
         # FIX 1 & 2: Axis labels
         self.discharge_ax_R.set_ylabel(r'Internal resistance, $R$ ($\Omega$)', fontsize=12)
         self.discharge_ax_R.grid(True, alpha=0.3)
-        self.discharge_ax_R.set_xlabel('Voltage (V)', fontsize=12) 
-        
-        self.discharge_ax_k.set_xlabel('Voltage (V)', fontsize=12)
+        self.discharge_ax_R.set_xlabel(x_label, fontsize=12)
+
+        self.discharge_ax_k.set_xlabel(x_label, fontsize=12)
         self.discharge_ax_k.set_ylabel(r'$k$ ($\Omega \cdot s^{-0.5}$)', fontsize=12)
         self.discharge_ax_k.grid(True, alpha=0.3)
         
@@ -1465,6 +1965,13 @@ class KineticsTab:
     
     def export_data(self):
         """Export R & k data to CSV with folder selection and filename prefix"""
+
+        # Overlay mode — export all selected files independently
+        if self.kin_overlay_var.get() and \
+                len(self._get_effective_all_regression_params()) > 0:
+            self.export_data_overlay()
+            return
+
         if self.df_raw is None:
             messagebox.showwarning("No Data", "Please load data first")
             return
@@ -1483,29 +1990,17 @@ class KineticsTab:
             self.update_status("Export cancelled by user")
             return
         
-        # Remember the folder for next time
         self.shared_data['last_folder'] = output_folder
         
         try:
             saved_params = self.shared_data.get('regression_params', {})
-            
-            # Get filename prefix from the original data file
             filename = self.shared_data.get('filename', '')
-            if filename:
-                # Remove file extension to use as prefix
-                filename_prefix = os.path.splitext(filename)[0]
-            else:
-                filename_prefix = "kinetic_analysis"
-            
-            # Call export function with folder and prefix parameters
+            filename_prefix = os.path.splitext(filename)[0] if filename else "kinetic_analysis"
+            mass_mg = self._get_mass_for_file(self.shared_data.get('active_file'))
+
             success = ka.export_R_k_results(
-                selected_cycles,
-                ka.DEFAULT_R1S,
-                ka.DEFAULT_R1L,
-                saved_params,
-                output_folder,
-                filename_prefix
-            )
+                selected_cycles, ka.DEFAULT_R1S, ka.DEFAULT_R1L,
+                saved_params, output_folder, filename_prefix, mass_mg)
             
             if success:
                 messagebox.showinfo("Export Complete", 
@@ -1523,6 +2018,96 @@ class KineticsTab:
             self.update_status(f"Export error: {str(e)}", error=True)
             import traceback
             traceback.print_exc()
+
+    def export_data_overlay(self):
+        """Export R & k data for all selected files in overlay mode."""
+        all_reg = self._get_effective_all_regression_params()
+        loaded = self.shared_data.get('loaded_files', {})
+
+        selected_files = {fname: params for fname, params in all_reg.items()
+                          if self.kin_file_check_vars.get(fname, tk.BooleanVar(value=True)).get()
+                          and params}
+
+        if not selected_files:
+            checked_fnames = [f for f, v in self.kin_file_check_vars.items() if v.get()]
+            if not checked_fnames:
+                detail = "No files are checked in the Multi-File panel."
+            else:
+                lines = []
+                for f in checked_fnames:
+                    short = os.path.basename(f)
+                    n_params = len(all_reg.get(f, {}))
+                    lines.append(f"  • {short}: {n_params} saved regression parameter(s)")
+                detail = ("Checked files and their saved regression parameter count:\n"
+                          + "\n".join(lines)
+                          + "\n\nEach file needs at least one saved regression parameter "
+                            "(Regression tab → save a fit) before it can be exported in overlay.")
+            messagebox.showwarning("No Files Selected", detail)
+            return
+
+        output_folder = filedialog.askdirectory(
+            title="Select Export Folder",
+            initialdir=self.shared_data.get('last_folder', os.path.expanduser("~")))
+
+        if not output_folder:
+            self.update_status("Export cancelled by user")
+            return
+
+        self.shared_data['last_folder'] = output_folder
+
+        exported = []
+        failed = []
+
+        for fname, saved_params in selected_files.items():
+            rec = loaded.get(fname)
+            if rec is None:
+                failed.append(os.path.basename(fname))
+                continue
+
+            # Get cycles for this file from the panel entry
+            file_vars = self.kin_file_vars.get(fname, {})
+            try:
+                cycles_str = file_vars['cycles_var'].get() if file_vars else ''
+                selected_cycles = ka.parse_cycle_input(cycles_str, rec['cycle_list']) \
+                    if cycles_str else rec['cycle_list']
+            except Exception:
+                selected_cycles = rec['cycle_list']
+
+            if not selected_cycles:
+                continue
+
+            # Sync ka with this file
+            ka.df_raw = rec['df_raw']
+            ka.cycle_list = rec['cycle_list']
+
+            filename_prefix = os.path.splitext(os.path.basename(fname))[0]
+            mass_mg = self._get_mass_for_file(fname)
+
+            try:
+                success = ka.export_R_k_results(
+                    selected_cycles, ka.DEFAULT_R1S, ka.DEFAULT_R1L,
+                    saved_params, output_folder, filename_prefix, mass_mg)
+                if success:
+                    exported.append(filename_prefix)
+                else:
+                    failed.append(filename_prefix)
+            except Exception as e:
+                failed.append(filename_prefix)
+                print(f"Export error for {fname}: {e}")
+
+        # Restore active file ka state
+        if self.df_raw is not None:
+            ka.df_raw = self.df_raw
+            ka.cycle_list = self.cycle_list
+
+        msg = f"Exported {len(exported)} files to:\n{output_folder}\n\n"
+        if exported:
+            msg += "✅ " + "\n✅ ".join(exported)
+        if failed:
+            msg += "\n\n❌ Failed:\n" + "\n".join(failed)
+
+        messagebox.showinfo("Export Complete", msg)
+        self.update_status(f"Overlay export: {len(exported)} files exported to {output_folder}")
     
     def update_status(self, message, error=False):
         """Update the bottom status bar"""

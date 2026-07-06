@@ -43,6 +43,9 @@ class RegressionTab:
         self.charge_r2_values = []
         self.discharge_r2_values = []
 
+        # Per-file checkboxes for multi-cycle overlay
+        self.multi_file_check_vars = {}  # {fname: BooleanVar}
+
         # Current indices
         self.current_charge_idx = 0
         self.current_discharge_idx = 0
@@ -58,6 +61,14 @@ class RegressionTab:
 
         # Load data
         self.load_shared_data()
+
+        # Single Cycle Analysis is the default-shown subtab, so it never
+        # gets the corrective resize that _on_tab_changed provides on an
+        # actual tab switch. Schedule that same correction once, after Tk
+        # has finished the initial layout pass, so its plots render fully
+        # (legend, full axis range, etc.) without requiring the user to
+        # switch tabs and back first.
+        self.parent.after(200, self._on_tab_changed)
 
     def create_interface(self):
         """Create the main interface with top controls and two tabs"""
@@ -101,17 +112,51 @@ class RegressionTab:
         self.notebook.add(self.multi_cycle_frame, text="Multi-Cycle Analysis")
         self.create_multi_cycle_tab()
 
+        self.notebook.bind('<<NotebookTabChanged>>', self._on_tab_changed)
+
+    def _on_tab_changed(self, event=None):
+        """Force whichever subtab's plot canvas(es) just became visible to
+        resize to their real, fully laid-out pixel size. A canvas that was
+        hidden when its subtab was built can be handed a stale/undersized
+        widget geometry (Tk hasn't allocated it real screen space yet),
+        which bakes in a wrong figure size - and a plot that renders bigger
+        than its visible canvas area - until something forces a resize."""
+        self.parent.update_idletasks()
+        try:
+            current = self.notebook.nametowidget(self.notebook.select())
+        except Exception:
+            return
+
+        if current is self.single_cycle_frame:
+            canvases = [getattr(self, 'charge_canvas', None), getattr(self, 'discharge_canvas', None)]
+        elif current is self.multi_cycle_frame:
+            canvases = [getattr(self, 'multi_canvas', None)]
+        else:
+            canvases = []
+
+        for canvas in canvases:
+            if canvas is None:
+                continue
+            tkcanvas = canvas._tkcanvas
+            tkcanvas.event_generate('<Configure>',
+                                     width=tkcanvas.winfo_width(),
+                                     height=tkcanvas.winfo_height())
+
     def create_single_cycle_tab(self):
         """Create single cycle analysis tab with charge/discharge side by side"""
 
+        self.single_cycle_frame.columnconfigure(0, weight=1, uniform="single_cycle")
+        self.single_cycle_frame.columnconfigure(1, weight=1, uniform="single_cycle")
+        self.single_cycle_frame.rowconfigure(0, weight=1)
+
         # Left: Charge Analysis
         left_frame = ttk.LabelFrame(self.single_cycle_frame, text="Charge Analysis")
-        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        left_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         self.create_phase_controls(left_frame, "charge")
 
         # Right: Discharge Analysis
         right_frame = ttk.LabelFrame(self.single_cycle_frame, text="Discharge Analysis")
-        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        right_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
         self.create_phase_controls(right_frame, "discharge")
 
     def create_phase_controls(self, parent, phase):
@@ -421,6 +466,27 @@ class RegressionTab:
         ttk.Button(right_panel, text="Export Plot", 
                 command=self.export_multi_cycle_plot).grid(row=4, column=0, columnspan=2, padx=5, pady=10)
         
+
+        # LOADED FILES PANEL
+        files_panel = ttk.LabelFrame(main_frame, text="Loaded Files", padding=8)
+        files_panel.pack(side=tk.LEFT, padx=(5, 0), fill=tk.BOTH)
+
+        self.multi_files_canvas = tk.Canvas(files_panel, height=100, width=300, highlightthickness=0)
+        multi_files_scroll = ttk.Scrollbar(files_panel, orient=tk.VERTICAL,
+                                            command=self.multi_files_canvas.yview)
+        self.multi_files_canvas.configure(yscrollcommand=multi_files_scroll.set)
+        self.multi_files_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        multi_files_scroll.pack(side=tk.LEFT, fill=tk.Y)
+
+        self.multi_files_inner = ttk.Frame(self.multi_files_canvas)
+        self.multi_files_canvas.create_window((0, 0), window=self.multi_files_inner, anchor='nw')
+        self.multi_files_inner.bind('<Configure>', lambda e: self.multi_files_canvas.configure(
+            scrollregion=self.multi_files_canvas.bbox('all')))
+
+        self.multi_overlay_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(files_panel, text="Overlay selected files",
+                        variable=self.multi_overlay_var).pack(anchor=tk.W, pady=(6, 0))
+
         # Initialize limits state
         self.update_limits_state()
 
@@ -440,8 +506,65 @@ class RegressionTab:
         # Pack toolbar at bottom, canvas fills remaining space
         self.multi_toolbar.pack(side=tk.BOTTOM, fill=tk.X)
         self.multi_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        
+
+
         self.multi_canvas.draw()
+
+    def _get_overlay_color(self, file_index):
+        """Return a colour for file_index from the shared palette."""
+        import matplotlib.colors as mcolors
+        colors = self.shared_data.get('overlay_colors', ['#1f77b4'])
+        n = len(colors)
+        base_color = colors[file_index % n]
+        round_num = file_index // n
+        if round_num == 0:
+            return base_color
+        elif round_num == 1:
+            rgb = mcolors.to_rgb(base_color)
+            return tuple(c + (1 - c) * 0.5 for c in rgb)
+        else:
+            rgb = mcolors.to_rgb(base_color)
+            return tuple(c * 0.5 for c in rgb)
+
+    def _refresh_multi_files_panel(self):
+        """Rebuild the loaded files panel with checkboxes and colour dots."""
+        loaded = self.shared_data.get('loaded_files', {})
+        active = self.shared_data.get('active_file', None)
+        colors = self.shared_data.get('overlay_colors', [])
+        n_colors = len(colors)
+
+        for widget in self.multi_files_inner.winfo_children():
+            widget.destroy()
+
+        existing_vars = self.multi_file_check_vars.copy()
+        self.multi_file_check_vars = {}
+
+        for i, (fname, rec) in enumerate(loaded.items()):
+            color = colors[i % n_colors] if n_colors else '#1f77b4'
+            short = os.path.basename(fname)
+            is_active = (fname == active)
+
+            row = ttk.Frame(self.multi_files_inner)
+            row.pack(fill=tk.X, pady=1)
+
+            # Restore or create BooleanVar — default checked
+            if fname in existing_vars:
+                check_var = existing_vars[fname]
+            else:
+                check_var = tk.BooleanVar(value=True)
+            self.multi_file_check_vars[fname] = check_var
+
+            ttk.Checkbutton(row, variable=check_var).pack(side=tk.LEFT)
+
+            dot = tk.Canvas(row, width=10, height=10, highlightthickness=0)
+            dot.pack(side=tk.LEFT, padx=(2, 4))
+            dot.create_oval(1, 1, 9, 9, fill=color, outline=color)
+
+            lbl_text = f"► {short}" if is_active else f"   {short}"
+            ttk.Label(row, text=lbl_text,
+                      foreground='darkblue' if is_active else '',
+                      font=('TkDefaultFont', 9, 'bold' if is_active else 'normal')
+                      ).pack(side=tk.LEFT)
 
     def load_shared_data(self):
         """Load data from shared_data"""
@@ -456,6 +579,10 @@ class RegressionTab:
 
         # Update multi-cycle available label
         self.update_multi_cycle_available_label()
+
+        # Refresh loaded files panel
+        if hasattr(self, 'multi_files_inner'):
+            self._refresh_multi_files_panel()
 
     def update_multi_cycle_available_label(self):
         """Update the available cycles label in multi-cycle tab"""
@@ -1065,16 +1192,23 @@ class RegressionTab:
         # Compute R² and save single-pulse params
         result = ra.compute_r2_for_pulse(pulse_data, pulse_num, r1s, r1l)
         key = f"{self.current_cycle}_{phase}_{pulse_num}"
-        self.shared_data['regression_params'][key] = {
+        params = {
             'start_time': start_time,
             'end_time': end_time,
-            'r1s': r1s,  # Keep for backward compatibility
-            'r1l': r1l,  # Keep for backward compatibility
+            'r1s': r1s,
+            'r1l': r1l,
             'r2': result['r2'],
             'cycle': self.current_cycle,
             'phase': phase,
             'pulse': pulse_num
         }
+        self.shared_data['regression_params'][key] = params
+        fname = self.shared_data.get('active_file') or self.shared_data.get('filename', 'unknown')
+        if 'all_regression_params' not in self.shared_data:
+            self.shared_data['all_regression_params'] = {}
+        if fname not in self.shared_data['all_regression_params']:
+            self.shared_data['all_regression_params'][fname] = {}
+        self.shared_data['all_regression_params'][fname][key] = params
 
         # If apply_all is requested, apply to every pulse in that phase
         if apply_all:
@@ -1089,7 +1223,7 @@ class RegressionTab:
                 
                 # Compute r2 for each pulse using the same time window
                 res_all = ra.compute_r2_for_pulse(pulse_data, p, r1s_p, r1l_p)
-                self.shared_data['regression_params'][key_all] = {
+                params_all = {
                     'start_time': start_time,
                     'end_time': end_time,
                     'r1s': r1s_p,
@@ -1099,6 +1233,8 @@ class RegressionTab:
                     'phase': phase,
                     'pulse': p
                 }
+                self.shared_data['regression_params'][key_all] = params_all
+                self.shared_data['all_regression_params'][fname][key_all] = params_all
                 applied_count += 1
 
             # Recompute all r2 values and refresh plots
@@ -1189,7 +1325,7 @@ class RegressionTab:
                 res = {'r2': np.nan}
 
             # Save params
-            self.shared_data['regression_params'][key] = {
+            params = {
                 'start_time': start_time,
                 'end_time': end_time,
                 'r1s': r1s,
@@ -1199,6 +1335,13 @@ class RegressionTab:
                 'phase': phase,
                 'pulse': p
             }
+            self.shared_data['regression_params'][key] = params
+            fname = self.shared_data.get('active_file') or self.shared_data.get('filename', 'unknown')
+            if 'all_regression_params' not in self.shared_data:
+                self.shared_data['all_regression_params'] = {}
+            if fname not in self.shared_data['all_regression_params']:
+                self.shared_data['all_regression_params'][fname] = {}
+            self.shared_data['all_regression_params'][fname][key] = params
 
             saved_count += 1
 
@@ -1296,7 +1439,7 @@ class RegressionTab:
                     
                     # Save parameters
                     key = f"{cycle_num}_{phase}_{pulse_num}"
-                    self.shared_data['regression_params'][key] = {
+                    params = {
                         'start_time': start_time,
                         'end_time': end_time,
                         'r1s': r1s,
@@ -1306,6 +1449,13 @@ class RegressionTab:
                         'phase': phase,
                         'pulse': pulse_num
                     }
+                    self.shared_data['regression_params'][key] = params
+                    fname = self.shared_data.get('active_file') or self.shared_data.get('filename', 'unknown')
+                    if 'all_regression_params' not in self.shared_data:
+                        self.shared_data['all_regression_params'] = {}
+                    if fname not in self.shared_data['all_regression_params']:
+                        self.shared_data['all_regression_params'][fname] = {}
+                    self.shared_data['all_regression_params'][fname][key] = params
                     total_saved += 1
                 
                 cycles_processed += 1
@@ -1340,9 +1490,193 @@ class RegressionTab:
         )
         
         print(f"✅ Applied window to ALL cycles for {phase} phase")
+        fname = self.shared_data.get('active_file') or self.shared_data.get('filename', 'unknown')
+        
+    def plot_multi_cycle_overlay(self):
+        """Plot R² vs cycle for selected files, one colour per file."""
+        all_reg = self.shared_data.get('all_regression_params', {})
+        loaded = self.shared_data.get('loaded_files', {})
+
+        # Filter to checked files only
+        selected_files = {fname: params for fname, params in all_reg.items()
+                          if self.multi_file_check_vars.get(fname, tk.BooleanVar(value=True)).get()}
+
+        if not selected_files:
+            messagebox.showwarning("No Files Selected",
+                "Please check at least one file in the Loaded Files panel.")
+            return
+
+        self.multi_ax.clear()
+        legend_elements = []
+
+        for file_idx, (fname, params_dict) in enumerate(selected_files.items()):
+            if not params_dict:
+                continue
+
+            # Get colour by original index in all_reg to keep colours consistent
+            orig_idx = list(all_reg.keys()).index(fname)
+            color = self._get_overlay_color(orig_idx)
+            short = os.path.basename(fname)
+            rec = loaded.get(fname)
+            if rec is None:
+                continue
+
+            df = rec['df_raw']
+            cycle_list = rec['cycle_list']
+            charge_data = []
+            discharge_data = []
+
+            for cycle_num in cycle_list:
+                cycle_df = df[df['cycle'] == cycle_num].copy()
+                if 'cycle_phase' not in cycle_df.columns:
+                    cycle_df['cycle_phase'] = ra.classify_charge_discharge(cycle_df)
+
+                # Charge
+                charge_df = cycle_df[cycle_df['cycle_phase'] == 'charge'].copy()
+                if len(charge_df) > 0:
+                    charge_processed = ra.assign_valid_pulses(charge_df, ra.MAX_REST_DURATION)
+                    if len(charge_processed) > 0:
+                        charge_processed = ra.compute_V0_t0(charge_processed)
+                        charge_nums = [p for p in charge_processed['pulse_number'].unique() if p > 0]
+                        for i, pulse_num in enumerate(charge_nums):
+                            key = f"{cycle_num}_charge_{pulse_num}"
+                            rest_data = charge_processed[charge_processed['pulse_number'] == pulse_num]
+                            rest_data = rest_data[rest_data['I/mA'] == 0].copy()
+                            if key in params_dict:
+                                p = params_dict[key]
+                                r1s, r1l = self.time_to_indices(rest_data, p['start_time'], p['end_time'])
+                            else:
+                                r1s, r1l = self.time_to_indices(rest_data, 0.1, 1.0)
+                            result = ra.compute_r2_for_pulse(charge_processed, pulse_num, r1s, r1l)
+                            charge_data.append({'cycle': cycle_num, 'pulse_idx': i, 'r2': result['r2']})
+
+                # Discharge
+                discharge_df = cycle_df[cycle_df['cycle_phase'] == 'discharge'].copy()
+                if len(discharge_df) > 0:
+                    discharge_processed = ra.assign_valid_pulses(discharge_df, ra.MAX_REST_DURATION)
+                    if len(discharge_processed) > 0:
+                        discharge_processed = ra.compute_V0_t0(discharge_processed)
+                        discharge_nums = [p for p in discharge_processed['pulse_number'].unique() if p > 0]
+                        for i, pulse_num in enumerate(discharge_nums):
+                            key = f"{cycle_num}_discharge_{pulse_num}"
+                            rest_data = discharge_processed[discharge_processed['pulse_number'] == pulse_num]
+                            rest_data = rest_data[rest_data['I/mA'] == 0].copy()
+                            if key in params_dict:
+                                p = params_dict[key]
+                                r1s, r1l = self.time_to_indices(rest_data, p['start_time'], p['end_time'])
+                            else:
+                                r1s, r1l = self.time_to_indices(rest_data, 0.1, 1.0)
+                            result = ra.compute_r2_for_pulse(discharge_processed, pulse_num, r1s, r1l)
+                            discharge_data.append({'cycle': cycle_num, 'pulse_idx': i, 'r2': result['r2']})
+
+            # Plot charge — solid line
+            if charge_data:
+                cdf = pd.DataFrame(charge_data)
+                for cycle in cdf['cycle'].unique():
+                    cd = cdf[cdf['cycle'] == cycle]
+                    n = len(cd)
+                    x_vals = [cycle] if n == 1 else np.linspace(cycle - 0.3, cycle + 0.3, n)
+                    self.multi_ax.plot(x_vals, cd['r2'].values, 'o-',
+                                       color=color, markersize=5, alpha=0.8)
+
+            # Plot discharge — dashed line
+            if discharge_data:
+                ddf = pd.DataFrame(discharge_data)
+                for cycle in ddf['cycle'].unique():
+                    dd = ddf[ddf['cycle'] == cycle]
+                    n = len(dd)
+                    x_vals = [cycle] if n == 1 else np.linspace(cycle - 0.3, cycle + 0.3, n)
+                    self.multi_ax.plot(x_vals, dd['r2'].values, 's--',
+                                   color=color, markersize=5, alpha=0.8,
+                                   markerfacecolor='none', markeredgewidth=1.5)
+
+            legend_elements.append(
+                Line2D([0], [0], color=color, marker='o', linestyle='-',
+                       label=f"{short} — charge", markersize=6))
+            legend_elements.append(
+                Line2D([0], [0], color=color, marker='s', linestyle='--',
+                       label=f"{short} — discharge", markersize=5,
+                       markerfacecolor='none', markeredgewidth=1.5))
+
+        # Collect all unique cycles across all files for x-axis
+        all_cycles = sorted(set(
+            cycle for fname in selected_files
+            for rec in [loaded.get(fname)] if rec
+            for cycle in rec['cycle_list']
+        ))
+
+        if not all_cycles:
+            self.multi_canvas.draw()
+            return
+
+        # Alternating background shading — same as single file mode
+        for i, cycle in enumerate(all_cycles):
+            if i % 2 == 0:
+                if i < len(all_cycles) - 1:
+                    next_cycle = all_cycles[i + 1]
+                    self.multi_ax.axvspan(cycle - 0.35, next_cycle - 0.35,
+                                          color='lightgray', alpha=0.35, zorder=0)
+                else:
+                    self.multi_ax.axvspan(cycle - 0.35, cycle + 0.65,
+                                          color='lightgray', alpha=0.35, zorder=0)
+
+        # X-axis ticks — same as single file mode
+        tick_positions = [c - 0.35 for c in all_cycles]
+        self.multi_ax.set_xticks(tick_positions)
+        self.multi_ax.set_xlim(min(all_cycles) - 0.35, max(all_cycles) + 0.9)
+
+        num_cycles = len(all_cycles)
+        if num_cycles > 50:
+            labels = [str(c) if c % 10 == 0 else '' for c in all_cycles]
+        elif num_cycles > 20:
+            labels = [str(c) if c % 5 == 0 else '' for c in all_cycles]
+        else:
+            labels = [str(c) for c in all_cycles]
+        self.multi_ax.set_xticklabels(labels, fontsize=14)
+
+        # Axis labels — same fontsize as single file mode
+        self.multi_ax.set_xlabel('Cycle Number', fontsize=16)
+        self.multi_ax.set_ylabel('Coefficient of determination, R²', fontsize=16)
+
+        # Title
+        if self.show_title_var.get():
+            self.multi_ax.set_title(f'R² Overlay — {len(selected_files)} files',
+                                     fontsize=14, fontweight='bold')
+        else:
+            self.multi_ax.set_title('')
+
+        # Legend — same fontsize as single file mode
+        if legend_elements:
+            legend = self.multi_ax.legend(handles=legend_elements, fontsize=11)
+            legend.set_draggable(True)
+            legend.get_frame().set_facecolor('white')
+            legend.get_frame().set_alpha(0.9)
+            legend.get_frame().set_edgecolor('black')
+
+        # Scale plot elements — same as single file mode
+        fig = self.multi_ax.figure
+        dpi = fig.get_dpi()
+        base_width_px = 12.0 * dpi
+        base_height_px = 6.0 * dpi
+        canvas = self.multi_canvas.get_tk_widget()
+        canvas.update_idletasks()
+        current_width_px = canvas.winfo_width()
+        current_height_px = canvas.winfo_height()
+        scale = min(current_width_px / base_width_px,
+                    current_height_px / base_height_px)
+        self.scale_plot_elements(self.multi_ax, scale)
+
+        self.multi_canvas.draw()
+        self.multi_feedback_label.config(
+            text=f"Overlay: {len(selected_files)} files plotted", foreground="blue")
 
     def plot_multi_cycle(self):
         """Plot R² across all cycles (global plot)"""
+        
+        if self.multi_overlay_var.get() and \
+                len(self.shared_data.get('all_regression_params', {})) > 0:
+            self.plot_multi_cycle_overlay()
+            return
 
         if self.df_raw is None or len(self.cycle_list) == 0:
             messagebox.showwarning("No Data", "Please load data first")
@@ -1569,29 +1903,20 @@ class RegressionTab:
         fig = self.multi_ax.figure
         dpi = fig.get_dpi()
         
-        print(f"DEBUG: Figure DPI = {dpi}")
-        print(f"DEBUG: Figure size (inches) = {fig.get_size_inches()}")
-
         # Baseline is 12×6 inches
         base_width_px = 12.0 * dpi
         base_height_px = 6.0 * dpi
         
-        print(f"DEBUG: Baseline pixels = {base_width_px:.0f} × {base_height_px:.0f}")
-
         # Get current canvas size
         canvas = self.multi_canvas.get_tk_widget()
         canvas.update_idletasks()
         current_width_px = canvas.winfo_width()
         current_height_px = canvas.winfo_height()
-        
-        print(f"DEBUG: Canvas pixels = {current_width_px} × {current_height_px}")
-
+                
         # Calculate scale factor
         scale = min(current_width_px / base_width_px, 
                     current_height_px / base_height_px)
         
-        print(f"DEBUG: Scale factor = {scale:.3f}")
-
         # Apply scaling
         self.scale_plot_elements(self.multi_ax, scale)
 

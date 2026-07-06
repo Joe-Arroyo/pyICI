@@ -20,12 +20,74 @@ from analysis.regression_analyzer import (
     DEFAULT_R1_LENGTH,
     MAX_REST_DURATION
 )
+from analysis.phase_classifier import calculate_capacity
 
 DEFAULT_R1S = DEFAULT_R1_START
 DEFAULT_R1L = DEFAULT_R1_LENGTH
 
 df_raw = None
 cycle_list = []
+
+def get_pulse_t0_values(data, pulse_numbers):
+    """Return t0 (the end-of-active-period timestamp) for each pulse, aligned
+    1:1 with pulse_numbers.
+
+    t0 is computed by compute_V0_t0() and is the exact time of the same row
+    get_pre_pulse_currents() reads its pre-pulse voltage from — it pins down
+    that one sample precisely, unlike voltage, which can repeat across
+    different pulses wherever the curve is flat.
+    """
+    t0_vals = []
+    for pulse_num in pulse_numbers:
+        pulse_data = data[data['pulse_number'] == pulse_num]
+        t0_series = pulse_data['t0'].dropna()
+        t0_vals.append(t0_series.iloc[0] if len(t0_series) > 0 else np.nan)
+    return np.array(t0_vals)
+
+def match_capacity_to_time(t0_values, capacity_curve):
+    """
+    Match each pulse's t0 to the row of `capacity_curve` (a DataFrame with
+    't/s', 'capacity_mAh', 'specific_capacity' columns, computed by
+    calculate_capacity() for the same cycle+phase) at that exact time, and
+    return the corresponding capacity_mAh/specific_capacity arrays, aligned
+    1:1 with `t0_values`.
+
+    Capacity is a monotonic, single-valued function of time — unlike
+    voltage, which can repeat across different pulses on a flat plateau (an
+    earlier version of this matched on voltage, which produced occasional
+    non-monotonic/zigzag results). t0 is sourced from the same underlying
+    data as the capacity curve, so this match is exact rather than an
+    approximation.
+    """
+    t0_values = np.asarray(t0_values, dtype=float)
+    n = len(t0_values)
+    capacity_mAh = np.full(n, np.nan)
+    specific_capacity = np.full(n, np.nan)
+
+    if capacity_curve is None or len(capacity_curve) == 0:
+        return capacity_mAh, specific_capacity
+
+    curve = capacity_curve[['t/s', 'capacity_mAh', 'specific_capacity']].dropna(subset=['t/s'])
+    if len(curve) == 0:
+        return capacity_mAh, specific_capacity
+    curve = curve.sort_values('t/s')
+
+    valid_mask = ~np.isnan(t0_values)
+    if not np.any(valid_mask):
+        return capacity_mAh, specific_capacity
+
+    query = pd.DataFrame({
+        't/s': t0_values[valid_mask],
+        '_order': np.where(valid_mask)[0]
+    }).sort_values('t/s')
+
+    matched = pd.merge_asof(query, curve, on='t/s', direction='nearest')
+    matched = matched.sort_values('_order')
+
+    capacity_mAh[valid_mask] = matched['capacity_mAh'].values
+    specific_capacity[valid_mask] = matched['specific_capacity'].values
+
+    return capacity_mAh, specific_capacity
 
 def get_pre_pulse_currents(data, pulse_numbers):
     currents = []
@@ -60,8 +122,13 @@ def get_pre_pulse_currents(data, pulse_numbers):
 def compute_regression_with_covariance(data, pulse_num, r1s, r1l):
     pulse_data = data[data['pulse_number'] == pulse_num]
     rest_data = pulse_data[pulse_data['I/mA'] == 0].copy()
-    
-    if len(rest_data) < r1s + r1l:
+
+    # len(rest_data) < r1s + r1l alone doesn't catch len(rest_data) == 0 when
+    # r1s + r1l <= 0 (e.g. a saved r1s/r1l of 0). An empty rest_data happens
+    # for real — e.g. the last pulse in a file whose recording ends before
+    # the next ICI interruption, which assign_valid_pulses still counts as
+    # "valid" since it only checks rest_duration <= max_rest, not > 0.
+    if len(rest_data) == 0 or len(rest_data) < r1s + r1l:
         return {'pulse': pulse_num, 'r2': np.nan, 'slope': np.nan, 'intercept': np.nan, 'cov': None, 'V0': np.nan}
     
     V0 = get_V0(data, pulse_num)
@@ -117,7 +184,7 @@ def compute_R_k(data, pulse_numbers, regression_results):
     
     return voltages, (np.array(R_vals), np.array(R_errs)), (np.array(k_vals), np.array(k_errs))
 
-def compute_R_k_for_cycle(cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None):
+def compute_R_k_for_cycle(cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, mass_mg=0):
     if df_raw is None:
         return None
     
@@ -161,7 +228,17 @@ def compute_R_k_for_cycle(cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, sa
         regression_results.append(result)
     
     voltages, (R_vals, R_errs), (k_vals, k_errs) = compute_R_k(phase_data, pulse_nums, regression_results)
-    
+
+    # Capacity lookup: build the capacity curve for this exact cycle+phase
+    # (same function Classification tab uses; phase_df rather than
+    # phase_data so capacity is computed from every sample in the
+    # half-cycle, matching what Classification tab plots), then match each
+    # pulse to it by t0 — the exact timestamp of that pulse's pre-pulse
+    # sample (see match_capacity_to_time for why time instead of voltage).
+    capacity_curve = calculate_capacity(phase_df, mass_mg)
+    t0_vals = get_pulse_t0_values(phase_data, pulse_nums)
+    capacity_vals, specific_capacity_vals = match_capacity_to_time(t0_vals, capacity_curve)
+
     return {
         'voltages': voltages,
         'R': R_vals,
@@ -169,21 +246,23 @@ def compute_R_k_for_cycle(cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, sa
         'k': k_vals,
         'k_err': k_errs,
         'pulse_nums': pulse_nums,
-        'r2': [result['r2'] for result in regression_results]
+        'r2': [result['r2'] for result in regression_results],
+        'capacity': capacity_vals,
+        'specific_capacity': specific_capacity_vals
     }
 
-def compute_R_k_for_cycles(cycle_nums, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None):
+def compute_R_k_for_cycles(cycle_nums, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, mass_mg=0):
     results = []
-    
+
     for cycle_num in cycle_nums:
-        result = compute_R_k_for_cycle(cycle_num, phase, r1s, r1l, saved_params)
+        result = compute_R_k_for_cycle(cycle_num, phase, r1s, r1l, saved_params, mass_mg)
         if result:
             result['cycle'] = cycle_num
             results.append(result)
-    
+
     return results
 
-def export_R_k_results(cycle_nums, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, output_folder="exports", filename_prefix=""):
+def export_R_k_results(cycle_nums, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, output_folder="exports", filename_prefix="", mass_mg=0):
     if df_raw is None:
         print("❌ No data loaded")
         return False
@@ -200,14 +279,16 @@ def export_R_k_results(cycle_nums, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_param
             all_data = []
             
             for cycle_num in cycle_nums:
-                result = compute_R_k_for_cycle(cycle_num, phase, r1s, r1l, saved_params)
-                
+                result = compute_R_k_for_cycle(cycle_num, phase, r1s, r1l, saved_params, mass_mg)
+
                 if result:
                     for i in range(len(result['voltages'])):
                         all_data.append({
                             'Cycle': cycle_num,
                             'Pulse_Number': result['pulse_nums'][i],
                             'Voltage (V)': result['voltages'][i],
+                            'Capacity (mAh)': result['capacity'][i],
+                            'Specific_Capacity (mAh/g)': result['specific_capacity'][i],
                             'R (Ohm)': result['R'][i],
                             'R_err (Ohm)': result['R_err'][i],
                             'k (Ohm·s^0.5)': result['k'][i],

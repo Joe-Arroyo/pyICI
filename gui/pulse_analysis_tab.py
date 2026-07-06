@@ -319,16 +319,16 @@ class PulseTab:
                 target_ax.axvspan(x, x + width, color=patch.get_facecolor(), 
                                 alpha=patch.get_alpha())
         
-        # Copy horizontal/vertical lines
-        for line in source_ax.get_lines():
-            if hasattr(line, '_x') and len(line._x) == 2:
-                if line._x[0] == line._x[1]:  # Vertical line
-                    target_ax.axvline(line._x[0], color=line.get_color(), 
-                                    linestyle=line.get_linestyle(), alpha=line.get_alpha())
-                elif line._y[0] == line._y[1]:  # Horizontal line
-                    target_ax.axhline(line._y[0], color=line.get_color(),
-                                    linestyle=line.get_linestyle(), alpha=line.get_alpha())
-        
+        # Note: any axhline/axvline in source_ax (e.g. the y=0 reference
+        # line) is already included in source_ax.get_lines() and was already
+        # drawn above by the generic "Copy lines" loop. A separate pass that
+        # re-detects 2-point horizontal/vertical lines and redraws them via
+        # axhline/axvline would double-draw the same line (stacking its
+        # alpha) — axhline/axvline only differ from a plain 2-point plot()
+        # line in how they behave under interactive zoom/pan, which doesn't
+        # matter here since this is a static export with xlim/ylim copied
+        # to match source_ax exactly below.
+
         # Copy formatting
         target_ax.set_xlabel(source_ax.get_xlabel(), fontsize=source_ax.xaxis.label.get_fontsize())
         target_ax.set_ylabel(source_ax.get_ylabel(), fontsize=source_ax.yaxis.label.get_fontsize())
@@ -452,12 +452,7 @@ class PulseTab:
         discharge_pulses = self.discharge_pulse_nums
         
         results.append(f"\nCHARGE PULSES: {len(charge_pulses)}")
-        if charge_pulses:
-            results.append(f"   Pulse numbers: {charge_pulses}")
-        
         results.append(f"\nDISCHARGE PULSES: {len(discharge_pulses)}")
-        if discharge_pulses:
-            results.append(f"   Pulse numbers: {discharge_pulses}")
         
         # Show V0 values if available
         if self.charge_data_rest is not None and len(self.charge_data_rest) > 0 and 'V0' in self.charge_data_rest.columns:

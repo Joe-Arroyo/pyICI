@@ -15,6 +15,7 @@ import numpy as np
 
 # Import the actual phase_classifier module
 import analysis.phase_classifier as phase_classifier
+import os
 
 def export_figure(fig, filepath, width_in=8, height_in=6, dpi=300):
     """Simple figure export function"""
@@ -58,6 +59,12 @@ class ClassificationTab:
         # Colorbar tracking (to prevent stacking) - separate for each tab
         self.phase_colorbar = None
         self.capacity_colorbar = None
+
+        # Data behind the last-drawn Capacity vs Voltage plot, for "Export Data"
+        self._last_capacity_export_df = None
+
+        # Per-file capacity panel data: {fname: {'cycles_var': StringVar, 'mass_var': StringVar}}
+        self.cap_file_vars = {}
         
         # Title storage for toggle functionality
         self._phase_multi_title = ""
@@ -69,7 +76,7 @@ class ClassificationTab:
         
         # Shared legend toggle variable
         self.show_legend_var = tk.BooleanVar(value=True)
-        
+             
         # Create GUI with notebook structure
         self.create_widgets()
         
@@ -226,6 +233,20 @@ class ClassificationTab:
         # Right side: Phase statistics
         stats_frame = ttk.LabelFrame(controls_stats_frame, text="Phase Statistics", padding=10)
         stats_frame.pack(side=tk.RIGHT, fill=tk.BOTH, padx=(5, 0))
+
+        # Centre: Loaded Files selector
+        files_panel = ttk.LabelFrame(controls_stats_frame, text="Loaded Files", padding=5)
+        files_panel.pack(side=tk.LEFT, fill=tk.BOTH, padx=(5, 0))
+
+        self.files_listbox = tk.Listbox(files_panel, height=4, width=35,
+                                        selectmode=tk.SINGLE, exportselection=False)
+        files_scroll = ttk.Scrollbar(files_panel, orient=tk.VERTICAL,
+                                    command=self.files_listbox.yview)
+        self.files_listbox.configure(yscrollcommand=files_scroll.set)
+        self.files_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        files_scroll.pack(side=tk.LEFT, fill=tk.Y)
+
+        self.files_listbox.bind('<<ListboxSelect>>', self._on_files_listbox_select)
         
         self.stats_text = tk.Text(stats_frame, height=6, width=35, state='disabled')
         self.stats_text.pack(fill=tk.BOTH, expand=True)
@@ -255,20 +276,59 @@ class ClassificationTab:
         control_frame = ttk.Frame(self.capacity_frame)
         control_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=10)
         
-        # Controls frame
-        controls_frame = ttk.LabelFrame(control_frame, text="Capacity Analysis Controls", padding=10)
-        controls_frame.pack(fill=tk.X)
+        # Side-by-side layout: controls left, loaded files right
+        cap_top_frame = ttk.Frame(control_frame)
+        cap_top_frame.pack(fill=tk.X)
+
+        # Controls frame (left)
+        controls_frame = ttk.LabelFrame(cap_top_frame, text="Capacity Analysis Controls", padding=10)
+        controls_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+
+        # Loaded Files panel (right)
+        cap_files_panel = ttk.LabelFrame(cap_top_frame, text="Loaded Files", padding=5)
+        cap_files_panel.pack(side=tk.RIGHT, fill=tk.BOTH, padx=(5, 0))
+
+        # Column headers
+        headers_frame = ttk.Frame(cap_files_panel)
+        headers_frame.pack(fill=tk.X, pady=(0, 2))
+        ttk.Label(headers_frame, text="File", font=('Arial', 8), foreground='gray').pack(side=tk.LEFT, padx=(18, 0))
+        ttk.Label(headers_frame, text="Cycles", font=('Arial', 8), foreground='gray').pack(side=tk.RIGHT, padx=(0, 62))
+        ttk.Label(headers_frame, text="Mass (mg)", font=('Arial', 8), foreground='gray').pack(side=tk.RIGHT, padx=(0, 4))
+
+        # Scrollable rows frame
+        cap_rows_canvas = tk.Canvas(cap_files_panel, height=80, highlightthickness=0)
+        cap_rows_scroll = ttk.Scrollbar(cap_files_panel, orient=tk.VERTICAL,
+                                         command=cap_rows_canvas.yview)
+        cap_rows_canvas.configure(yscrollcommand=cap_rows_scroll.set)
+        cap_rows_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        cap_rows_scroll.pack(side=tk.LEFT, fill=tk.Y)
+
+        self.cap_rows_inner = ttk.Frame(cap_rows_canvas)
+        self.cap_rows_window = cap_rows_canvas.create_window((0, 0), window=self.cap_rows_inner, anchor='nw')
+
+        def _on_cap_rows_configure(event):
+            cap_rows_canvas.configure(scrollregion=cap_rows_canvas.bbox('all'))
+            cap_rows_canvas.itemconfig(self.cap_rows_window, width=cap_rows_canvas.winfo_width())
+
+        self.cap_rows_inner.bind('<Configure>', _on_cap_rows_configure)
+        cap_rows_canvas.bind('<Configure>', lambda e: cap_rows_canvas.itemconfig(
+            self.cap_rows_window, width=e.width))
+
+        # Overlay checkbox
+        self.cap_overlay_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(cap_files_panel, text="Overlay all files",
+                        variable=self.cap_overlay_var,
+                        command=self._on_cap_overlay_toggled).pack(anchor=tk.W, pady=(6, 0))
         
-        # Mass input
+        # Mass is set per file in the "Loaded Files" panel (right side) — no
+        # shared/global mass field here, since a single field can't tell
+        # files apart and silently carries over the wrong mass when the
+        # active file is switched.
         mass_frame = ttk.Frame(controls_frame)
         mass_frame.grid(row=0, column=0, columnspan=4, sticky=tk.EW, pady=(0,10))
-        
-        ttk.Label(mass_frame, text="Sample Mass (mg):").grid(row=0, column=0, sticky=tk.W, padx=5)
-        self.mass_var = tk.StringVar(value="0")
-        mass_entry = ttk.Entry(mass_frame, textvariable=self.mass_var, width=15)
-        mass_entry.grid(row=0, column=1, padx=5, sticky=tk.W)
-        ttk.Label(mass_frame, text="(0 = absolute capacity)", font=('Arial', 8), foreground='gray').grid(row=0, column=2, sticky=tk.W, padx=5)
-        
+        ttk.Label(mass_frame, text="Sample mass is set per file in the ‘Loaded Files’ panel →",
+                  font=('Arial', 9), foreground='gray').pack(side=tk.LEFT, padx=5)
+
         # Cycle selection (reuse multi-cycle logic)
         cycle_frame = ttk.Frame(controls_frame)
         cycle_frame.grid(row=1, column=0, columnspan=4, sticky=tk.EW, pady=(10,0))
@@ -364,6 +424,12 @@ class ClassificationTab:
             text="Export",
             command=self.export_capacity_figure
         ).grid(row=0, column=4, padx=10, rowspan=2)
+
+        ttk.Button(
+            capacity_export_frame,
+            text="Export Data",
+            command=self.export_capacity_data
+        ).grid(row=2, column=0, columnspan=5, padx=10, pady=(4, 0), sticky=tk.EW)
         
         # Plotting frame
         plot_frame = ttk.LabelFrame(self.capacity_frame, text="Capacity vs Voltage Visualization", padding=5)
@@ -382,21 +448,222 @@ class ClassificationTab:
         # Pack in correct order
         self.capacity_toolbar.pack(side=tk.BOTTOM, fill=tk.X)
         self.capacity_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        self.notebook.bind('<<NotebookTabChanged>>', self._on_tab_changed)
+
+    def _get_cycle_shade(self, base_color, cycle_index, total_cycles):
+        """Return a shade of base_color: light for early cycles, dark for later ones."""
+        import matplotlib.colors as mcolors
+        rgb = mcolors.to_rgb(base_color)
+        t = cycle_index / max(total_cycles - 1, 1)  # 0.0 → 1.0
+        if t < 0.5:
+            blend = 1 - t * 2        # 1.0 → 0.0: blend towards white
+            return tuple(c + (1 - c) * blend * 0.6 for c in rgb)
+        else:
+            blend = (t - 0.5) * 2   # 0.0 → 1.0: blend towards black
+            return tuple(c * (1 - blend * 0.4) for c in rgb)
+
+    def _get_overlay_color(self, file_index):
+        """Return a colour for file_index, with shading for >10 files."""
+        import matplotlib.colors as mcolors
+        colors = self.shared_data.get('overlay_colors', ['#1f77b4'])
+        n = len(colors)
+        base_color = colors[file_index % n]
+        round_num = file_index // n   # 0 = normal, 1 = light, 2 = dark
+        if round_num == 0:
+            return base_color
+        elif round_num == 1:
+            rgb = mcolors.to_rgb(base_color)
+            return tuple(c + (1 - c) * 0.5 for c in rgb)  # lighten
+        else:
+            rgb = mcolors.to_rgb(base_color)
+            return tuple(c * 0.5 for c in rgb)             # darken
+
+    def _on_tab_changed(self, event=None):
+        """Refresh file lists when switching subtabs, and force whichever
+        subtab's plot canvas just became visible to resize its figure to
+        the widget's real, fully laid-out pixel size. A canvas that was
+        hidden when its tab was built can be handed a stale/undersized
+        widget geometry (Tk hasn't allocated it real screen space yet),
+        which bakes in a smaller figure - and correspondingly smaller-
+        looking fonts - until something forces a resize."""
+        if hasattr(self, '_files_listbox'):
+            self._refresh_files_listbox()
+        if hasattr(self, 'cap_rows_inner'):
+            self._refresh_cap_files_listbox()
+
+        self.parent.update_idletasks()
+        try:
+            current = self.notebook.nametowidget(self.notebook.select())
+        except Exception:
+            return
+        for frame, canvas in ((self.phase_frame, getattr(self, 'phase_canvas', None)),
+                              (self.capacity_frame, getattr(self, 'capacity_canvas', None))):
+            if canvas is None or frame is not current:
+                continue
+            tkcanvas = canvas._tkcanvas
+            tkcanvas.event_generate('<Configure>',
+                                     width=tkcanvas.winfo_width(),
+                                     height=tkcanvas.winfo_height())
+
+    def _refresh_cap_files_listbox(self):
+        """Rebuild the capacity tab per-file rows panel."""
+        loaded = self.shared_data.get('loaded_files', {})
+        active = self.shared_data.get('active_file', None)
+        colors = self.shared_data.get('overlay_colors', [])
+        n_colors = len(colors)
+
+        # Destroy existing rows
+        for widget in self.cap_rows_inner.winfo_children():
+            widget.destroy()
+
+        # Keep existing StringVars to preserve user edits
+        existing_vars = self.cap_file_vars.copy()
+        self.cap_file_vars = {}
+
+        # Header row
+        ttk.Label(self.cap_rows_inner, text='File', foreground='gray').grid(
+            row=0, column=1, columnspan=2, sticky=tk.W, padx=2, pady=(0, 2))
+        ttk.Label(self.cap_rows_inner, text='Cycles', foreground='gray').grid(
+            row=0, column=3, sticky=tk.W, padx=2, pady=(0, 2))
+        ttk.Label(self.cap_rows_inner, text='Mass (mg)', foreground='gray').grid(
+            row=0, column=4, sticky=tk.W, padx=2, pady=(0, 2))
+
+        for i, (fname, rec) in enumerate(loaded.items()):
+            row_num = i + 1
+            color = colors[i % n_colors] if n_colors else '#1f77b4'
+            short = os.path.basename(fname)
+            is_active = (fname == active)
+
+            # Colour dot
+            dot = tk.Canvas(self.cap_rows_inner, width=10, height=10, highlightthickness=0)
+            dot.grid(row=row_num, column=0, padx=(4, 2), pady=2)
+            dot.create_oval(1, 1, 9, 9, fill=color, outline=color)
+
+            # Filename label
+            lbl_text = f"► {short}" if is_active else f"   {short}"
+            lbl = ttk.Label(self.cap_rows_inner, text=lbl_text, width=22,
+                            foreground='darkblue' if is_active else '',
+                            font=('TkDefaultFont', 9, 'bold' if is_active else 'normal'))
+            lbl.grid(row=row_num, column=1, columnspan=2, sticky=tk.W, padx=2, pady=2)
+            lbl.bind('<Button-1>', lambda e, f=fname: self._set_cap_active_file(f))
+
+            # Restore or create StringVars
+            if fname in existing_vars:
+                cycles_var = existing_vars[fname]['cycles_var']
+                mass_var   = existing_vars[fname]['mass_var']
+            else:
+                default_cycles = ','.join(map(str, rec['cycle_list']))
+                cycles_var = tk.StringVar(value=default_cycles)
+                mass_var   = tk.StringVar(value='0')
+
+            self.cap_file_vars[fname] = {'cycles_var': cycles_var, 'mass_var': mass_var}
+
+            # Cycles entry
+            ttk.Entry(self.cap_rows_inner, textvariable=cycles_var, width=10).grid(
+                row=row_num, column=3, padx=2, pady=2, sticky=tk.W)
+
+            # Mass entry
+            ttk.Entry(self.cap_rows_inner, textvariable=mass_var, width=7).grid(
+                row=row_num, column=4, padx=2, pady=2, sticky=tk.W)
+
+        self.cap_rows_inner.columnconfigure(2, weight=1)
+
+    def _save_outgoing_regression_params(self, new_fname):
+        """Snapshot the currently-active file's regression_params into
+        all_regression_params before switching away from it. Without this,
+        switching active file via this panel (rather than Data Tab) silently
+        drops whatever regression work was done on the outgoing file."""
+        old_fname = self.shared_data.get('active_file')
+        if old_fname and old_fname != new_fname:
+            self.shared_data.setdefault('all_regression_params', {})[old_fname] = \
+                self.shared_data.get('regression_params', {}).copy()
+
+    def _set_cap_active_file(self, fname):
+        """Set active file from capacity panel click."""
+        loaded = self.shared_data.get('loaded_files', {})
+        if fname not in loaded:
+            return
+        rec = loaded[fname]
+        self._save_outgoing_regression_params(fname)
+        self.shared_data['active_file'] = fname
+        self.shared_data['df_raw']      = rec['df_raw']
+        self.shared_data['cycle_list']  = rec['cycle_list']
+        self.shared_data['filename']    = rec['filename']
+        all_params = self.shared_data.get('all_regression_params', {})
+        self.shared_data['regression_params'] = all_params.get(fname, {})
+        self.df_raw     = rec['df_raw']
+        self.cycle_list = rec['cycle_list']
+        self._refresh_cap_files_listbox()
+        self._refresh_files_listbox()
+        self.status_label.config(
+            text=f"Active: {os.path.basename(fname)}  |  {len(self.cycle_list)} cycles")
     
+    def _refresh_files_listbox(self):
+        """Rebuild the files listbox from shared_data['loaded_files']."""
+        loaded = self.shared_data.get('loaded_files', {})
+        active = self.shared_data.get('active_file', None)
+        self.files_listbox.delete(0, tk.END)
+        self._listbox_filenames = list(loaded.keys())
+        for i, fname in enumerate(self._listbox_filenames):
+            import os
+            short = os.path.basename(fname)
+            display = f"► {short}" if fname == active else f"   {short}"
+            self.files_listbox.insert(tk.END, display)
+            if fname == active:
+                self.files_listbox.itemconfig(i, bg='#d0eaff')
+
+    def _on_files_listbox_select(self, event=None):
+        """Switch active file when user selects from listbox."""
+        sel = self.files_listbox.curselection()
+        if not sel:
+            return
+        fname = self._listbox_filenames[sel[0]]
+        loaded = self.shared_data.get('loaded_files', {})
+        if fname not in loaded:
+            return
+        rec = loaded[fname]
+        # Push selected file into shared_data and local state
+        self._save_outgoing_regression_params(fname)
+        self.shared_data['active_file'] = fname
+        self.shared_data['df_raw']      = rec['df_raw']
+        self.shared_data['cycle_list']  = rec['cycle_list']
+        self.shared_data['ici_starts']  = rec['ici_starts']
+        self.shared_data['filename']    = rec['filename']
+        all_params = self.shared_data.get('all_regression_params', {})
+        self.shared_data['regression_params'] = all_params.get(fname, {})
+        self.df_raw      = rec['df_raw']
+        self.cycle_list  = rec['cycle_list']
+        self.update_cycle_selector()
+        self._refresh_files_listbox()
+        self.status_label.config(
+            text=f"Active: {os.path.basename(fname)}  |  {len(self.cycle_list)} cycles")
+
+
     def load_shared_data(self):
         """Load data references from the shared data dictionary"""
         if 'df_raw' in self.shared_data and self.shared_data['df_raw'] is not None:
             self.df_raw = self.shared_data['df_raw']
             self.cycle_list = self.shared_data.get('cycle_list', [])
             self.update_cycle_selector()
-            
             # Check if all cycles are already classified (from Data Tab)
             if 'cycle_phase' in self.df_raw.columns:
                 self.status_label.config(text=f"Data loaded, {len(self.cycle_list)} cycles pre-classified.")
             else:
                 self.status_label.config(text=f"Data loaded, {len(self.cycle_list)} cycles ready for classification.")
         else:
+            # Reset stale state so this tab doesn't keep operating on
+            # already-removed data (e.g. after Data tab's "Remove All").
+            self.df_raw = None
+            self.cycle_list = []
+            self.update_cycle_selector()
             self.status_label.config(text="Ready - Load data in Data Tab first")
+
+        # Always refresh the file panels, even when df_raw is None — otherwise
+        # removing all files in Data tab leaves stale entries showing here.
+        self._refresh_files_listbox()
+        if hasattr(self, 'cap_rows_inner'):
+            self._refresh_cap_files_listbox()
 
     def update_cycle_selector(self):
         """Update the cycle selector combobox with available cycles"""
@@ -566,7 +833,7 @@ class ClassificationTab:
             self.status_label.config(text=f"Plotting {len(selected_cycles)} cycles...")
             self.parent.update()
             
-            # PLOT DIRECTLY IN GUI (not using phase_classifier capture)
+            # PLOT DIRECTLY IN GUI 
             self.plot_multi_cycle_direct(selected_cycles)
             
             # Update classified data for statistics
@@ -661,8 +928,8 @@ class ClassificationTab:
                     cycle_normalized = 0.0  # Single cycle case
                 cycle_color = cmap(cycle_normalized)
                 # No label when using colorbar
-                self.phase_ax.plot(cycle_data['time_norm'], cycle_data['E/V'], '-o', 
-                            color=cycle_color, linewidth=1, alpha=0.8, markersize=1)
+                self.phase_ax.plot(cycle_data['time_norm'], cycle_data['E/V'], '-o',
+                            color=cycle_color, linewidth=1.5, alpha=0.8, markersize=2)
             else:
                 # viridis: Use position within ALL cycles for consistent coloring (not index in selected)
                 if len(self.cycle_list) > 1:
@@ -670,9 +937,9 @@ class ClassificationTab:
                 else:
                     cycle_normalized = 0.0  # Single cycle case
                 cycle_color = cmap(cycle_normalized)  # Use normalized position, not colors[i]
-                self.phase_ax.plot(cycle_data['time_norm'], cycle_data['E/V'], '-o', 
+                self.phase_ax.plot(cycle_data['time_norm'], cycle_data['E/V'], '-o',
                             color=cycle_color, label=f'Cycle {cycle_num}',
-                            linewidth=1, alpha=0.8, markersize=1)
+                            linewidth=1.5, alpha=0.8, markersize=2)
         
         # --- TITLE LOGIC MODIFICATION: Save and apply title ---
         cycles_display = ', '.join(map(str, selected_cycles[:8]))
@@ -965,6 +1232,38 @@ class ClassificationTab:
         except Exception as e:
             messagebox.showerror("Export Error", str(e))
 
+    def export_capacity_data(self):
+        """Export the underlying data of the last-drawn Capacity vs Voltage plot as CSV."""
+        if self._last_capacity_export_df is None or self._last_capacity_export_df.empty:
+            messagebox.showwarning("No Data", "Plot capacity vs voltage first.")
+            return
+
+        # Same "<filename>_<thing>.csv" naming scheme as Tab 5's export
+        # (e.g. "10 cycles data_R_k_results_charge.csv").
+        if 'File' in self._last_capacity_export_df.columns:
+            default_name = "capacity_overlay.csv"
+        else:
+            active_fname = self.shared_data.get('active_file') or self.shared_data.get('filename') or ''
+            prefix = os.path.splitext(os.path.basename(active_fname))[0] if active_fname else "capacity_analysis"
+            default_name = f"{prefix}_capacity.csv"
+
+        filepath = filedialog.asksaveasfilename(
+            title="Export Capacity vs Voltage Data",
+            defaultextension=".csv",
+            initialfile=default_name,
+            filetypes=[("CSV", "*.csv")]
+        )
+
+        if not filepath:
+            return
+
+        try:
+            self._last_capacity_export_df.to_csv(filepath, index=False)
+            messagebox.showinfo("Export", f"Capacity data exported:\n{filepath}")
+
+        except Exception as e:
+            messagebox.showerror("Export Error", str(e))
+
     # ===========================================================================================
     # PHASE STATISTICS (EXISTING)
     # ===========================================================================================
@@ -1028,7 +1327,7 @@ class ClassificationTab:
                 
                 # Copy formatting with hours conversion
                 self.phase_ax.set_xlabel('Time (h)', fontsize=12)  # Force hours label
-                self.phase_ax.set_ylabel(source_ax.get_ylabel())
+                self.phase_ax.set_ylabel(source_ax.get_ylabel(), fontsize=12)
                 self.phase_ax.grid(True, alpha=0.3)
                 # Convert x-axis limits from seconds to hours (handle potential list/array issues)
                 xlim_seconds = source_ax.get_xlim()
@@ -1062,7 +1361,7 @@ class ClassificationTab:
                                 linestyle=line.get_linestyle(), marker=line.get_marker(),
                                 markersize=line.get_markersize())
                     
-                    ax2.set_ylabel(source_ax2.get_ylabel(), color='orange')
+                    ax2.set_ylabel(source_ax2.get_ylabel(), color='orange', fontsize=12)
                     ax2.tick_params(axis='y', labelcolor='orange')
                     ax2.set_ylim(source_ax2.get_ylim())
                     
@@ -1127,36 +1426,38 @@ class ClassificationTab:
     # ===========================================================================================
     
     def calculate_capacity(self, data, mass_mg):
-        """Calculate capacity from current integration with reset at each phase change"""
-        data = data.copy()
-        
-        # Ensure we have phase classification
-        if 'cycle_phase' not in data.columns:
-            data['cycle_phase'] = phase_classifier.classify_charge_discharge(data)
-        
-        # Create segment_id: increments each time phase changes
-        data['segment_id'] = (data['cycle_phase'] != data['cycle_phase'].shift()).cumsum()
-        
-        # Calculate time differences
-        data['dt'] = data['t/s'].diff().fillna(0)
-        
-        # Reset dt to 0 at the start of every new segment to prevent large jumps between cycles/phases
-        data.loc[data['segment_id'] != data['segment_id'].shift(), 'dt'] = 0
-        
-        # Calculate dQ (mAh)
-        data['dQ'] = data['I/mA'].abs() * data['dt'] / 3600
-        
-        # Calculate capacity resetting at each phase (charge/discharge/rest starts at 0)
-        data['capacity_mAh'] = data.groupby('segment_id')['dQ'].cumsum()
-        
-        # Calculate specific capacity if mass provided
-        if mass_mg > 0:
-            data['specific_capacity'] = data['capacity_mAh'] / (mass_mg / 1000)
-        else:
-            data['specific_capacity'] = 0.0 # Avoid undefined state
-        
-        return data
-    
+        """Calculate capacity from current integration with reset at each phase change.
+
+        Delegates to analysis.phase_classifier.calculate_capacity so the Kinetics
+        tab can reuse the exact same computation (single source of truth).
+        """
+        return phase_classifier.calculate_capacity(data, mass_mg)
+
+    def _sync_mass_to_shared(self, fname, mass_mg):
+        """Record the mass used to compute a capacity plot for `fname` so the
+        Kinetics tab can look it up (via shared_data['file_mass_mg']) without
+        needing its own mass field or recomputing capacity itself."""
+        if fname:
+            self.shared_data.setdefault('file_mass_mg', {})[fname] = mass_mg
+
+    def _get_cap_mass_for_file(self, fname):
+        """Read the mass (mg) entered for `fname` in the per-file 'Loaded
+        Files' panel. This is the single source of truth for mass — there is
+        no shared/global mass field, so each file's own value is always used
+        regardless of which file is currently active."""
+        file_vars = self.cap_file_vars.get(fname, {})
+        try:
+            return float(file_vars['mass_var'].get()) if file_vars else 0.0
+        except (ValueError, KeyError):
+            return 0.0
+
+    def _on_cap_overlay_toggled(self):
+        """Re-plot immediately when 'Overlay all files' is checked/unchecked,
+        instead of waiting for another click on a Plot button."""
+        if self.df_raw is None or not self.capacity_cycle_var.get().strip():
+            return
+        self.plot_capacity_vs_voltage()
+
     def plot_capacity_vs_voltage(self):
         """Plot capacity vs voltage for selected cycles"""
         if self.df_raw is None:
@@ -1174,17 +1475,19 @@ class ClassificationTab:
             if not selected_cycles:
                 messagebox.showwarning("Invalid Input", "Please enter valid cycle numbers")
                 return
-            
-            # Get mass
-            try:
-                mass_mg = float(self.mass_var.get())
-            except ValueError:
-                mass_mg = 0.0
-            
+
+            # Get mass from this file's row in the per-file panel
+            active_fname = self.shared_data.get('active_file')
+            mass_mg = self._get_cap_mass_for_file(active_fname)
+
             self.status_label.config(text=f"Plotting capacity vs voltage for {len(selected_cycles)} cycles...")
             self.parent.update()
-            
-            self.plot_capacity_direct(selected_cycles, mass_mg)
+
+            if self.cap_overlay_var.get() and len(self.shared_data.get('loaded_files', {})) > 1:
+                self.plot_capacity_overlay()
+            else:
+                self._sync_mass_to_shared(active_fname, mass_mg)
+                self.plot_capacity_direct(selected_cycles, mass_mg)
             
             capacity_type = "specific" if mass_mg > 0 else "absolute"
             self.status_label.config(text=f"Capacity plot completed: {len(selected_cycles)} cycles ({capacity_type} capacity)")
@@ -1210,13 +1513,116 @@ class ClassificationTab:
             all_cycles_str = ','.join(map(str, self.cycle_list))
             self.capacity_cycle_var.set(all_cycles_str)
             
-            # Use capacity plotting
-            self.plot_capacity_vs_voltage()
+            # Use capacity plotting — overlay uses per-file entries, not the shared cycle var
+            if self.cap_overlay_var.get() and len(self.shared_data.get('loaded_files', {})) > 1:
+                self.plot_capacity_overlay()
+            else:
+                self.plot_capacity_vs_voltage()
             
         except Exception as e:
             messagebox.showerror("Plot Error", f"Error plotting all capacity cycles:\n{str(e)}")
             print(f"All capacity cycles plot error: {e}")
     
+    def plot_capacity_overlay(self):
+        """Plot capacity vs voltage for ALL loaded files, one colour per file."""
+        loaded = self.shared_data.get('loaded_files', {})
+        if not loaded:
+            messagebox.showwarning("No Data", "No files loaded.")
+            return
+
+        # Remove old colorbar
+        if self.capacity_colorbar is not None:
+            try:
+                self.capacity_colorbar.remove()
+            except (KeyError, ValueError, AttributeError):
+                pass
+            self.capacity_colorbar = None
+
+        self.capacity_fig.clear()
+        self.capacity_ax = self.capacity_fig.add_subplot(111)
+
+        any_specific = False
+        export_frames = []
+
+        for i, (fname, rec) in enumerate(loaded.items()):
+            color = self._get_overlay_color(i)
+            short = os.path.basename(fname)
+
+            # Get per-file cycles and mass from the panel
+            file_vars = self.cap_file_vars.get(fname, {})
+            try:
+                cycles_str = file_vars['cycles_var'].get() if file_vars else ''
+                selected_cycles = self.parse_cycle_input(cycles_str) if cycles_str else rec['cycle_list']
+            except Exception:
+                selected_cycles = rec['cycle_list']
+            mass_mg = self._get_cap_mass_for_file(fname)
+            self._sync_mass_to_shared(fname, mass_mg)
+
+            if mass_mg > 0:
+                any_specific = True
+
+            df = rec['df_raw']
+            selected_data = df[df['cycle'].isin(selected_cycles)].copy()
+            if len(selected_data) == 0:
+                continue
+
+            capacity_data = self.calculate_capacity(selected_data, mass_mg)
+            if 'cycle_phase' not in capacity_data.columns:
+                capacity_data['cycle_phase'] = phase_classifier.classify_charge_discharge(capacity_data)
+
+            file_export = capacity_data[['cycle', 'cycle_phase', 't/s', 'E/V',
+                                          'capacity_mAh', 'specific_capacity']].copy()
+            file_export.insert(0, 'File', short)
+            file_export.columns = ['File', 'Cycle', 'Phase', 'Time (s)', 'Voltage (V)',
+                                    'Capacity (mAh)', 'Specific Capacity (mAh/g)']
+            export_frames.append(file_export)
+
+            x_col = 'specific_capacity' if mass_mg > 0 else 'capacity_mAh'
+
+            total_cycles = len(selected_cycles)
+            for j, cycle_num in enumerate(selected_cycles):
+                cycle_data = capacity_data[capacity_data['cycle'] == cycle_num].copy()
+                if len(cycle_data) == 0:
+                    continue
+                charge_data    = cycle_data[cycle_data['cycle_phase'] == 'charge']
+                discharge_data = cycle_data[cycle_data['cycle_phase'] == 'discharge']
+                cycle_color = self._get_cycle_shade(color, j, total_cycles)
+                label = f"{short} C{cycle_num}" if j == 0 else f"{short} C{cycle_num}"
+
+                if not charge_data.empty:
+                    self.capacity_ax.plot(charge_data[x_col], charge_data['E/V'], '-o',
+                                        color=cycle_color, label=label,
+                                        linewidth=1.5, alpha=0.8, markersize=2)
+                if not discharge_data.empty:
+                    self.capacity_ax.plot(discharge_data[x_col], discharge_data['E/V'], '-o',
+                                        color=cycle_color, label='_nolegend_',
+                                        linewidth=1.5, alpha=0.8, markersize=2)
+
+        self._last_capacity_export_df = (
+            pd.concat(export_frames, ignore_index=True) if export_frames else None)
+
+        xlabel = 'Specific Capacity (mAh/g)' if any_specific else 'Capacity (mAh)'
+        self.capacity_ax.set_xlabel(xlabel, fontsize=12)
+        self.capacity_ax.set_ylabel('Voltage (V)', fontsize=12)
+        self.capacity_ax.grid(True, alpha=0.3)
+
+        full_title = f'Capacity vs Voltage - Overlay ({len(loaded)} files)'
+        self._capacity_title = full_title
+        if self.show_title_var.get():
+            self.capacity_ax.set_title(full_title, fontsize=12, fontweight='bold')
+
+        legend = self.capacity_ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        legend.set_draggable(True)
+        legend.set_zorder(100)
+        legend.get_frame().set_facecolor('white')
+        legend.get_frame().set_alpha(0.9)
+        legend.get_frame().set_edgecolor('black')
+
+        self.capacity_fig.tight_layout()
+        self.capacity_canvas.draw()
+        self.status_label.config(text=f"Overlay: {len(loaded)} files plotted")
+
+
     def plot_capacity_direct(self, selected_cycles, mass_mg):
         """Plot capacity vs voltage with SAME color/legend logic as phase classification"""
         
@@ -1247,7 +1653,14 @@ class ClassificationTab:
         # Ensure phase classification exists
         if 'cycle_phase' not in capacity_data.columns:
             capacity_data['cycle_phase'] = phase_classifier.classify_charge_discharge(capacity_data)
-        
+
+        # Stash the plotted data so "Export Data" can save exactly what's on screen
+        export_df = capacity_data[['cycle', 'cycle_phase', 't/s', 'E/V',
+                                    'capacity_mAh', 'specific_capacity']].copy()
+        export_df.columns = ['Cycle', 'Phase', 'Time (s)', 'Voltage (V)',
+                              'Capacity (mAh)', 'Specific Capacity (mAh/g)']
+        self._last_capacity_export_df = export_df
+
         # SMART COLORMAP SYSTEM (matching notebook exactly)
         if num_cycles <= 10:
             # Few cycles: sample colors from viridis colormap
@@ -1298,12 +1711,12 @@ class ClassificationTab:
             if not charge_data.empty:
                 self.capacity_ax.plot(charge_data[x_col], charge_data['E/V'], '-o',
                               color=cycle_color, label=label,
-                              linewidth=1, alpha=0.8, markersize=1)
+                              linewidth=1.5, alpha=0.8, markersize=2)
             
             if not discharge_data.empty:
                 self.capacity_ax.plot(discharge_data[x_col], discharge_data['E/V'], '-o',
                               color=cycle_color,  # No label for discharge (matches notebook)
-                              linewidth=1, alpha=0.8, markersize=1)
+                              linewidth=1.5, alpha=0.8, markersize=2)
         
         # Title logic
         cycles_display = ', '.join(map(str, selected_cycles[:8]))

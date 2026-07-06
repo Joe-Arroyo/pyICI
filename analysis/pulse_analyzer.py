@@ -156,11 +156,6 @@ def get_phase_classifier():
 # MAIN ANALYSIS FUNCTIONS
 # =============================================================================
 
-# =============================================================================
-# REPLACE THIS FUNCTION IN: analysis/pulse_analyzer.py
-# Location: Around line 70-120 (in the "MAIN ANALYSIS FUNCTIONS" section)
-# =============================================================================
-
 def analyze_cycle_pulses(cycle_num):
     """
     Main function to analyze all pulses in a cycle
@@ -261,7 +256,7 @@ def analyze_cycle_pulses(cycle_num):
             charge_processed = assign_valid_pulses(charge_data, MAX_REST_DURATION)
             if len(charge_processed) > 0:
                 charge_data_rest = compute_V0_t0(charge_processed)
-                charge_pulse_nums = sorted([p for p in charge_data_rest['pulse_number'].unique() if p > 0])
+                charge_pulse_nums = sorted([int(p) for p in charge_data_rest['pulse_number'].unique() if p > 0])
                 print(f"✓ Found {len(charge_pulse_nums)} valid charge pulses")
             else:
                 print(f"⚠  No valid charge pulses found (rest periods too long or too short)")
@@ -279,7 +274,7 @@ def analyze_cycle_pulses(cycle_num):
             discharge_processed = assign_valid_pulses(discharge_data, MAX_REST_DURATION)
             if len(discharge_processed) > 0:
                 discharge_data_rest = compute_V0_t0(discharge_processed)
-                discharge_pulse_nums = sorted([p for p in discharge_data_rest['pulse_number'].unique() if p > 0])
+                discharge_pulse_nums = sorted([int(p) for p in discharge_data_rest['pulse_number'].unique() if p > 0])
                 print(f"✓ Found {len(discharge_pulse_nums)} valid discharge pulses")
             else:
                 print(f"⚠  No valid discharge pulses found (rest periods too long or too short)")

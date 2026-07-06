@@ -124,6 +124,47 @@ def validate_cycle_input(input_str, available_cycles):
     return valid_cycles
 
 # =============================================================================
+# CAPACITY CALCULATION
+# =============================================================================
+
+def calculate_capacity(data, mass_mg):
+    """Calculate capacity from current integration with reset at each phase change.
+
+    Shared by the Classification tab (Capacity vs Voltage) and the Kinetics tab
+    (R/k vs Capacity) so both compute capacity the same way from the same function.
+    """
+    data = data.copy()
+
+    # Ensure we have phase classification
+    if 'cycle_phase' not in data.columns:
+        data['cycle_phase'] = classify_charge_discharge(data)
+
+    # Create segment_id: increments each time phase changes
+    data['segment_id'] = (data['cycle_phase'] != data['cycle_phase'].shift()).cumsum()
+
+    # Calculate time differences
+    data['dt'] = data['t/s'].diff().fillna(0)
+
+    # Reset dt to 0 at the start of every new segment to prevent large jumps between cycles/phases
+    data.loc[data['segment_id'] != data['segment_id'].shift(), 'dt'] = 0
+
+    # Calculate dQ (mAh)
+    data['dQ'] = data['I/mA'].abs() * data['dt'] / 3600
+
+    # Calculate capacity resetting at each phase (charge/discharge/rest starts at 0)
+    data['capacity_mAh'] = data.groupby('segment_id')['dQ'].cumsum()
+
+    # Calculate specific capacity if mass provided (NaN when no mass, so it's
+    # correctly excluded by NaN-based filtering downstream rather than
+    # silently plotting a degenerate x=0 point)
+    if mass_mg > 0:
+        data['specific_capacity'] = data['capacity_mAh'] / (mass_mg / 1000)
+    else:
+        data['specific_capacity'] = np.nan
+
+    return data
+
+# =============================================================================
 # VISUALIZATION FUNCTIONS
 # =============================================================================
 
