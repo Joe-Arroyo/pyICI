@@ -46,21 +46,13 @@ header-includes:
 
 # Summary
 
-Rechargeable batteries degrade as they are used, and tracking *why* they degrade requires a
-diagnostic techniques that can run continuously during charge–discharge cycling. Intermittent current interruption (ICI) is one such technique: brief pauses (typically 1–10 s) are inserted into an otherwise constant-current cycle, and the voltage relaxation during each pause is analyzed to separate two contributions to the cell resistance — the internal resistance $R$ ($\Omega$), which captures Ohmic and charge-transfer contributions, and the diffusion resistance coefficient $k$ ($\Omega\,\mathrm{s}^{-1/2}$), which captures solid-state mass transport [@Lacey2017; @Chien2023]. During each interruption the voltage change $\Delta V$ is linear in the square root of time, so a linear regression of $\Delta V$ versus $\sqrt{t}$ yields both parameters:
+Intermitent Current Interruption (ICI) is an electrochemical diagnostic tool for monitoring the health of batteries by constant determination of the internal resistance and diffusion resistance coefficient during charge-discharge cycling. ICI introduces brief current interruptions (typically 1–10 s) during constant-current cycling, and the voltage relaxation during each pause is analyzed to calculate the internal resistance $R$ ($\Omega$), which captures Ohmic and charge-transfer contributions, and the diffusion resistance coefficient $k$ ($\Omega\,\mathrm{s}^{-1/2}$), which captures solid-state mass transport [@YIN2022140888; @Chien2023].During each interruption the voltage change $\Delta V$ is linear in the square root of time, so a linear regression of $\Delta V$ versus $\sqrt{t}$ yields both parameters:
 
-$$R = -\frac{\mathrm{intercept}}{I}, \qquad k = -\frac{\mathrm{slope}}{I},$$
+$$R = -\frac{\mathrm{\Delta V(0)}}{I}, \qquad k = -\frac{\mathrm{1}}{I}\times\frac{\mathrm{d\Delta V(0)}}{d \sqrt t},$$
 
 where $I$ is the applied current immediately before the interruption.
 
-`pyICI` is an open-source, GUI-based Python application that automates this analysis. It
-loads single- or multi-cycle galvanostatic cycling data, detects the current-interruption
-pulses, classifies charge and discharge regimes, performs the $\sqrt{t}$ regression for
-every pulse with a user-adjustable fitting window, propagates fit uncertainties through to
-$R$ and $k$ via the regression covariance matrix, and exports the results — $R$, $k$, their
-errors, and the coefficient of determination $R^2$ per pulse and per cycle — to CSV files
-for further analysis. All steps are interactive and visual, so the quality of every 
-individual fit can be inspected and corrected before the derived parameters are trusted.
+`pyICI` is an application that automates the analysis of single- and multi-cycle galvanostatic cycling data. It automatically detects cycles, current-interruption pulses, classifies data and performs the $\sqrt{t}$ regression for every pulse with a user-adjustable fitting window, propagates fit uncertainties through to $R$ and $k$ via the regression covariance matrix. All steps are interactive and visual, so the quality of every individual fit can be inspected and corrected.
 
 # Statement of need
 
