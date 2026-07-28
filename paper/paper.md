@@ -48,7 +48,7 @@ header-includes:
 
 Intermitent Current Interruption (ICI) is an electrochemical diagnostic tool for monitoring the health of batteries by constant determination of the internal resistance and diffusion resistance coefficient during charge-discharge cycling. ICI introduces brief current interruptions (typically 1–10 s) during constant-current cycling, and the voltage relaxation during each pause is analyzed to calculate the internal resistance $R$ ($\Omega$), which captures Ohmic and charge-transfer contributions, and the diffusion resistance coefficient $k$ ($\Omega\,\mathrm{s}^{-1/2}$), which captures solid-state mass transport [@YIN2022140888; @Chien2023].During each interruption the voltage change $\Delta V$ is linear in the square root of time, so a linear regression of $\Delta V$ versus $\sqrt{t}$ yields both parameters:
 
-$$R = -\frac{\mathrm{\Delta V(0)}}{I}, \qquad k = -\frac{\mathrm{1}}{I}\times\frac{\mathrm{d\Delta V(0)}}{d \sqrt t},$$
+$$R = -\frac{\mathrm{\Delta V(0)}}{I}, \qquad k = -\frac{\mathrm{1}}{I}\times\frac{\mathrm{d\Delta V}}{d \sqrt t},$$
 
 where $I$ is the applied current immediately before the interruption.
 
