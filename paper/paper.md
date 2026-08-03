@@ -11,14 +11,14 @@ authors:
   - name: José J. Arroyo-Gómez
     orcid: 0000-0001-8214-0645
     affiliation: 1, 2, 3, 4
-  - name: Ashok. S. Menon
-    orcid: 0000-0001-8148-8615
-    affiliation: 3,4,5
   - name: Israel Temprano
     orcid: 0000-0001-5610-8908
     affiliation: 6,7
   - name: Louis F.J. Piper
     orcid: 0000-0002-3421-3210
+    affiliation: 3,4,5
+  - name: Ashok. S. Menon
+    orcid: 0000-0001-8148-8615
     affiliation: 3,4,5
 affiliations:
   - name: 'Departamento de Almacenamiento de la Energía, Subgerencia Operativa de Energía y Movilidad, Instituto Nacional de Tecnología Industrial (INTI), Buenos Aires, Argentina'
@@ -46,7 +46,7 @@ header-includes:
 
 # Summary
 
-Intermitent Current Interruption (ICI) is an electrochemical diagnostic tool for monitoring the health of batteries by constant determination of the internal resistance and diffusion resistance coefficient during charge-discharge cycling. ICI introduces brief current interruptions (typically 1–10 s) during constant-current cycling, and the voltage relaxation during each pause is analyzed to calculate the internal resistance $R$ ($\Omega$), which captures Ohmic and charge-transfer contributions, and the diffusion resistance coefficient $k$ ($\Omega\,\mathrm{s}^{-1/2}$), which captures solid-state mass transport [@YIN2022140888; @Chien2023].During each interruption the voltage change $\Delta V$ is linear in the square root of time, so a linear regression of $\Delta V$ versus $\sqrt{t}$ yields both parameters:
+Intermittent Current Interruption (ICI) is an electrochemical diagnostic tool for monitoring the health of battery cells by the determination of the internal and diffusion resistance during galvanostatic cycling. ICI introduces brief current interruptions (typically 1–10 s) during constant-current cycling, and the voltage relaxation during each pause is analyzed to calculate the internal resistance $R$ ($\Omega$), which captures Ohmic and charge-transfer contributions, and the diffusion resistance coefficient $k$ ($\Omega\,\mathrm{s}^{-1/2}$), which captures solid-state mass transport [@YIN2022140888; @Chien2023].During each interruption the voltage change $\Delta V$ is linear in the square root of time, so a linear regression of $\Delta V$ versus $\sqrt{t}$ yields both parameters:
 
 $$R = -\frac{\mathrm{\Delta V(0)}}{I}, \qquad k = -\frac{\mathrm{1}}{I}\times\frac{\mathrm{d\Delta V}}{d \sqrt t},$$
 
