@@ -13,13 +13,13 @@ authors:
     affiliation: 1, 2, 3, 4
   - name: Israel Temprano
     orcid: 0000-0001-5610-8908
-    affiliation: 6,7
+    affiliation: 5,6
   - name: Louis F.J. Piper
     orcid: 0000-0002-3421-3210
-    affiliation: 3,4,5
+    affiliation: 3,4,7
   - name: Ashok. S. Menon
     orcid: 0000-0001-8148-8615
-    affiliation: 3,4,5
+    affiliation: 3,4,7
 affiliations:
   - name: 'Departamento de Almacenamiento de la Energía, Subgerencia Operativa de Energía y Movilidad, Instituto Nacional de Tecnología Industrial (INTI), Buenos Aires, Argentina'
     index: 1
@@ -30,11 +30,11 @@ affiliations:
   - name: 'The Faraday Institution, Quad One, Harwell Science and Innovation Campus, Didcot, UK'
     index: 4
   - name: 'The Hartnoll Centre for Experimental Fuel Technologies, University of Warwick, Coventry, UK'
-    index: 5
-  - name: 'Yusuf Hamied Department of Chemistry, Lensfield Road, Cambridge, UK'
-    index: 6
-  - name: 'CICA - Interdisciplinary Center for Chemistry and Biology, University of A Coruña, A Coruña, Spain'
     index: 7
+  - name: 'Yusuf Hamied Department of Chemistry, Lensfield Road, Cambridge, UK'
+    index: 5
+  - name: 'CICA - Interdisciplinary Center for Chemistry and Biology, University of A Coruña, A Coruña, Spain'
+    index: 6
 
     
 date: $\today$
@@ -46,7 +46,7 @@ header-includes:
 
 # Summary
 
-Intermittent Current Interruption (ICI) is an electrochemical diagnostic tool for monitoring the health of battery cells by the determination of the internal and diffusion resistance during galvanostatic cycling. ICI introduces brief current interruptions (typically 1–10 s) during constant-current cycling, and the voltage relaxation during each pause is analyzed to calculate the internal resistance $R$ ($\Omega$), which captures Ohmic and charge-transfer contributions, and the diffusion resistance coefficient $k$ ($\Omega\,\mathrm{s}^{-1/2}$), which captures solid-state mass transport [@YIN2022140888; @Chien2023].During each interruption the voltage change $\Delta V$ is linear in the square root of time, so a linear regression of $\Delta V$ versus $\sqrt{t}$ yields both parameters:
+Intermittent Current Interruption (ICI) is an electrochemical diagnostic tool for monitoring the health of battery cells. In this method, the internal resistive and diffusive behaviours of the cells are determined via periodic current interruptions (typically 1–10 s) during constant-current cycling. The voltage relaxation during each pause can be analyzed to calculate the internal resistance $R$ ($\Omega$), which captures Ohmic and charge-transfer contributions, and the diffusion resistance coefficient $k$ ($\Omega\,\mathrm{s}^{-1/2}$), which captures solid-state mass transport [@YIN2022140888; @Chien2023]. During each interruption the voltage change $\Delta V$ is linear in the square root of time, so a linear regression of $\Delta V$ versus $\sqrt{t}$ yields both parameters:
 
 $$R = -\frac{\mathrm{\Delta V(0)}}{I}, \qquad k = -\frac{\mathrm{1}}{I}\times\frac{\mathrm{d\Delta V}}{d \sqrt t},$$
 
