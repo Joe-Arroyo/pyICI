@@ -89,6 +89,6 @@ An earlier version of the analysis code that became pyICI was used to extract in
 
 # Acknowledgements
 
-This work was supported by the Faraday Institution's Visiting Research Fellowship scheme . 
+This work was supported by the Faraday Institution's Visiting Research Fellowship scheme. 
 
 # References
