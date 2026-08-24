@@ -10,16 +10,16 @@ tags:
 authors:
   - name: José J. Arroyo-Gómez
     orcid: 0000-0001-8214-0645
-    affiliation: 1, 2, 3, 4
+    affiliation: "1, 2, 3, 4"
   - name: Israel Temprano
     orcid: 0000-0001-5610-8908
-    affiliation: 5,6
+    affiliation: "5, 6"
   - name: Louis F.J. Piper
     orcid: 0000-0002-3421-3210
-    affiliation: 3,4,7
+    affiliation: "3, 4, 7"
   - name: Ashok S. Menon
     orcid: 0000-0001-8148-8615
-    affiliation: 3,4,7
+    affiliation: "3, 4, 7"
 affiliations:
   - name: 'Departamento de Almacenamiento de la Energía, Subgerencia Operativa de Energía y Movilidad, Instituto Nacional de Tecnología Industrial (INTI), Buenos Aires, Argentina'
     index: 1
