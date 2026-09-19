@@ -8,6 +8,7 @@
     time2     Voltage2     Current2
     ...       ...          ...      
     ```
+    
   - **Multiple cycles**: four-column files:
     ```
 
@@ -18,6 +19,8 @@
     ...           ...       ...          ...      
     ```
   See examples in the [data](/data) folder
+
+  **Note on cycle detection:** Files with a cycle-number column use those numbers directly. Files **without** one (three-column files) have their cycles detected automatically from the current signal — each charge + > discharge pair counts as one cycle, and the brief current interruptions are ignored. This is controlled by the **Cycles** selector in the Data tab (`auto` = detect from current, `file` = treat as a single cycle). Files with **more than three columns** open a mapping dialog on load, where you assign which columns are Time, Voltage, Current and (optionally) Cycle number; any other columns are ignored. This redundancy is useful for detecting multiple cycles in a three-column file and giving to the user the option of assigning time, voltage, current and cycle number in files with multiple columns or with no column headers. 
 
 2. **Data loading and visualization:** Raw data visualization, no data treatment. ICI starting points are detected based on the current.
   
