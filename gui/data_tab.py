@@ -229,11 +229,19 @@ class DataTab:
         ttk.Label(params_frame, text="Current (mA):").grid(row=1, column=0, sticky=tk.W, padx=2, pady=1)
         self.current_threshold_var = tk.StringVar(value=str(data_loader.CURRENT_THRESHOLD))
         ttk.Entry(params_frame, textvariable=self.current_threshold_var, width=8).grid(row=1, column=1, padx=2, pady=1)
-        
+
+        # Cycle detection (used only for files without a cycle-number column)
+        ttk.Label(params_frame, text="Cycles:").grid(row=2, column=0, sticky=tk.W, padx=2, pady=1)
+        self.cycle_mode_var = tk.StringVar(value=getattr(data_loader, 'CYCLE_DETECTION_MODE', 'auto'))
+        ttk.Combobox(params_frame, textvariable=self.cycle_mode_var,
+                     values=['auto', 'file'], width=7,
+                     state='readonly').grid(row=2, column=1, padx=2, pady=1)
+
         # Help text (smaller)
-        help_label = ttk.Label(params_frame, text="ℹ️ Affects pulse detection",
-                              font=('Arial', 7), foreground='gray')
-        help_label.grid(row=2, column=0, columnspan=2, pady=2)
+        help_label = ttk.Label(params_frame,
+                               text="ℹ️ auto = detect cycles from current\n(3-column files only)",
+                               font=('Arial', 7), foreground='gray')
+        help_label.grid(row=3, column=0, columnspan=2, pady=2)
 
         # 5. Active File Indicator (RIGHT of Analysis Parameters)
         active_file_frame = ttk.LabelFrame(controls_row_frame, text="Active File", padding=5)
@@ -352,11 +360,30 @@ class DataTab:
                 data_loader.MAX_REST_DURATION = float(self.max_rest_var.get())
                 data_loader.CURRENT_THRESHOLD = float(self.current_threshold_var.get())
             except ValueError:
-                messagebox.showwarning("Invalid Parameters", 
+                messagebox.showwarning("Invalid Parameters",
                     "Invalid parameter values. Using defaults.")
                 data_loader.MAX_REST_DURATION = 1800
                 data_loader.CURRENT_THRESHOLD = 1.0
-            
+
+            # Cycle detection mode from GUI (files without a cycle column)
+            data_loader.CYCLE_DETECTION_MODE = self.cycle_mode_var.get()
+
+            # Column mapping: for files with more than 3 columns, ask the user
+            # to map each column to a role (time / voltage / current / cycle).
+            try:
+                columns = data_loader.peek_columns(filepath)
+            except Exception as e:
+                print(f"peek_columns failed: {e}")
+                columns = []
+            if len(columns) > 3:
+                mapping = self._prompt_column_mapping(filename, columns)
+                if mapping is None:
+                    self.status_label.config(text="Load cancelled")
+                    return
+                data_loader.COLUMN_MAP = mapping
+            else:
+                data_loader.COLUMN_MAP = None
+
             # Temporarily disable matplotlib plotting to prevent popup windows
             original_backend = plt.get_backend()
             plt.switch_backend('Agg')  # Non-interactive backend
@@ -490,6 +517,127 @@ class DataTab:
             import traceback
             traceback.print_exc()
     
+    # ==============================
+    # COLUMN MAPPING DIALOG
+    # ==============================
+
+    def _guess_roles(self, columns):
+        """Best-guess {role: column} from header names. Used only to pre-fill the
+        mapping dialog - the user always confirms, so a wrong guess is harmless."""
+        roles = {}
+
+        def norm(c):
+            return str(c).strip().lower()
+
+        def is_capacity(nm):
+            return (any(k in nm for k in ['mah', 'ma.h', 'q-qo', 'q_qo', 'capacity'])
+                    or nm.startswith('q') or nm.startswith('(q'))
+
+        # cycle (name only - never guessed from data)
+        for c in columns:
+            if 'cycle' in norm(c):
+                roles['cycle'] = c
+                break
+        # time
+        for c in columns:
+            if c in roles.values():
+                continue
+            nm = norm(c)
+            if 'time' in nm or nm in ('t/s', 't', 't(s)') or nm.startswith('t/'):
+                roles['time'] = c
+                break
+        # voltage
+        for c in columns:
+            if c in roles.values():
+                continue
+            nm = norm(c)
+            if is_capacity(nm):
+                continue
+            if (any(k in nm for k in ['ewe', 'ecell', 'voltage', 'potential'])
+                    or '/v' in nm or nm == 'e/v'):
+                roles['voltage'] = c
+                break
+        # current
+        for c in columns:
+            if c in roles.values():
+                continue
+            nm = norm(c)
+            if is_capacity(nm):
+                continue
+            if ('current' in nm or 'i/ma' in nm or nm.startswith('i/')
+                    or nm == 'i' or '/ma' in nm):
+                roles['current'] = c
+                break
+        return roles
+
+    def _prompt_column_mapping(self, filename, columns):
+        """Modal dialog to map file columns to roles.
+        Returns a dict {'time','voltage','current','cycle'} or None if cancelled."""
+        guesses = self._guess_roles(columns)
+        NONE_LABEL = "None - detect from current"
+
+        win = tk.Toplevel(self.parent)
+        win.title("Map columns")
+        win.transient(self.parent.winfo_toplevel())
+        win.grab_set()
+        win.resizable(False, False)
+
+        result = {'value': None}
+
+        ttk.Label(win, text=f"File: {filename}   ({len(columns)} columns found)",
+                  font=('Arial', 10, 'bold')).grid(
+            row=0, column=0, columnspan=2, padx=10, pady=(10, 4), sticky=tk.W)
+        ttk.Label(win, text="Assign each role to a column. Unassigned columns are ignored.",
+                  font=('Arial', 8), foreground='gray').grid(
+            row=1, column=0, columnspan=2, padx=10, pady=(0, 8), sticky=tk.W)
+
+        time_var = tk.StringVar(value=guesses.get('time', ''))
+        volt_var = tk.StringVar(value=guesses.get('voltage', ''))
+        curr_var = tk.StringVar(value=guesses.get('current', ''))
+        cyc_var  = tk.StringVar(value=guesses.get('cycle', NONE_LABEL))
+
+        def add_row(r, label, var, values):
+            ttk.Label(win, text=label).grid(row=r, column=0, padx=(12, 6), pady=3, sticky=tk.W)
+            ttk.Combobox(win, textvariable=var, values=values, width=30,
+                         state='readonly').grid(row=r, column=1, padx=(0, 12), pady=3, sticky=tk.EW)
+
+        add_row(2, "Time:",         time_var, columns)
+        add_row(3, "Voltage:",      volt_var, columns)
+        add_row(4, "Current:",      curr_var, columns)
+        add_row(5, "Cycle number:", cyc_var,  [NONE_LABEL] + list(columns))
+
+        err_label = ttk.Label(win, text="", foreground="red", font=('Arial', 8))
+        err_label.grid(row=6, column=0, columnspan=2, padx=12, pady=(2, 0), sticky=tk.W)
+
+        def on_ok():
+            t, v, c = time_var.get(), volt_var.get(), curr_var.get()
+            cyc = cyc_var.get()
+            if '' in (t, v, c):
+                err_label.config(text="Time, Voltage and Current are all required.")
+                return
+            if len({t, v, c}) != 3:
+                err_label.config(text="Time, Voltage and Current must be different columns.")
+                return
+            result['value'] = {
+                'time': t, 'voltage': v, 'current': c,
+                'cycle': None if cyc == NONE_LABEL else cyc,
+            }
+            win.destroy()
+
+        def on_cancel():
+            result['value'] = None
+            win.destroy()
+
+        btns = ttk.Frame(win)
+        btns.grid(row=7, column=0, columnspan=2, pady=10)
+        ttk.Button(btns, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btns, text="OK", command=on_ok).pack(side=tk.LEFT, padx=6)
+
+        win.columnconfigure(1, weight=1)
+        win.protocol("WM_DELETE_WINDOW", on_cancel)
+        win.wait_window()
+        return result['value']
+
     # ==============================
     # MULTI-FILE MANAGEMENT
     # ==============================

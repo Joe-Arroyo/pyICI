@@ -25,6 +25,16 @@ import time
 MAX_REST_DURATION = 1800  # seconds
 CURRENT_THRESHOLD = 1.0   # mA
 
+# Cycle identification for files WITHOUT a cycle-number column:
+#   'auto' -> detect cycles automatically from the current signal
+#   'file' -> treat the whole file as a single cycle (original behaviour)
+CYCLE_DETECTION_MODE = 'auto'
+
+# Manual column mapping (role -> original column name; the 'cycle' role may be
+# None). Set by the GUI mapping dialog for files with more than 3 columns.
+# None means: use the automatic position-based detection (3/4-column files).
+COLUMN_MAP = None
+
 # Standard column names (internal format after processing)
 STANDARD_COLUMNS = ['cycle', 't/s', 'E/V', 'I/mA']
 
@@ -326,44 +336,147 @@ def standardize_columns_by_position(df, data_format):
     
     return df_std
 
+def peek_columns(file_path):
+    """Return the usable column names of a data file (after dropping unnamed /
+    all-NaN columns), or [] on failure. Used by the GUI column-mapping dialog."""
+    delimiter, _ = inspect_data_file(file_path)
+    if delimiter is None:
+        return []
+    try:
+        df = pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8')
+    except Exception as e:
+        print(f"❌ peek_columns error: {e}")
+        return []
+    drop = [c for c in df.columns
+            if 'unnamed' in str(c).lower() or df[c].isna().all()]
+    if drop:
+        df = df.drop(columns=drop)
+    return list(df.columns)
+
+def build_df_from_map(df, col_map):
+    """Build the standard [cycle, t/s, E/V, I/mA] DataFrame from a manual column
+    mapping supplied by the GUI.
+
+    col_map keys: 'time', 'voltage', 'current', 'cycle'. 'cycle' may be None,
+    in which case a single cycle is created and cycles are detected downstream
+    from the current signal. Any column not referenced is ignored.
+    """
+    out = pd.DataFrame()
+    out['t/s']  = pd.to_numeric(df[col_map['time']],    errors='coerce')
+    out['E/V']  = pd.to_numeric(df[col_map['voltage']], errors='coerce')
+    out['I/mA'] = pd.to_numeric(df[col_map['current']], errors='coerce')
+    if col_map.get('cycle'):
+        out.insert(0, 'cycle', pd.to_numeric(df[col_map['cycle']], errors='coerce'))
+    else:
+        out.insert(0, 'cycle', 1)
+    print(f"   ✅ Columns mapped -> time:'{col_map['time']}', "
+          f"voltage:'{col_map['voltage']}', current:'{col_map['current']}', "
+          f"cycle:'{col_map.get('cycle')}'")
+    return out[['cycle', 't/s', 'E/V', 'I/mA']]
+
 # =============================================================================
 # CORE ANALYSIS FUNCTIONS
 # =============================================================================
 
-def detect_and_fix_cycle_structure(df, current_threshold=1.0):
-    """Process cycle structure - simplified for single cycle compatibility"""
+def detect_cycles_from_current(df, current_threshold=1.0, current_col='I/mA'):
+    """Signal-based, start-agnostic cycle detection.
+
+    A full cycle = two half-cycles (one charge + one discharge, in whichever
+    order they occur). Current interruptions and CV-taper points sit at/near
+    zero, count as 'rest', and are absorbed into the surrounding half-cycle so
+    they never create a false boundary.
+
+    Steps:
+      1. macro-phase per point: |I| <= threshold -> rest, I > 0 -> charge,
+         I < 0 -> discharge
+      2. forward-fill rests into the preceding active phase
+      3. count a half-cycle boundary at every charge<->discharge flip
+      4. full cycle = (half_index // 2) + 1   (pairs every two half-cycles)
+
+    Returns a numpy int array (cycles 1..N), one per row of df.
+    """
+    current = df[current_col].to_numpy(dtype=float)
+    n = len(current)
+    if n == 0:
+        return np.ones(0, dtype=int)
+
+    # 1) macro-phase: +1 charge, -1 discharge, 0 rest
+    phase = np.where(current > current_threshold, 1,
+             np.where(current < -current_threshold, -1, 0)).astype(int)
+
+    nz = np.flatnonzero(phase != 0)
+    if nz.size == 0:
+        print("   ⚠️ No current above threshold - treating as a single cycle")
+        return np.ones(n, dtype=int)
+
+    # 2) forward-fill rests with the preceding active phase (vectorized)
+    ff = np.zeros(n, dtype=int)
+    ff[nz] = nz
+    ff = np.maximum.accumulate(ff)
+    filled = phase[ff]
+    filled[:nz[0]] = phase[nz[0]]        # leading rests -> first active phase
+
+    # 3) half-cycle index: +1 at each charge<->discharge flip
+    changed = np.zeros(n, dtype=bool)
+    changed[1:] = filled[1:] != filled[:-1]
+    half_index = np.cumsum(changed)
+
+    # 4) pair two half-cycles into one full cycle
+    cycles = (half_index // 2) + 1
+    return cycles.astype(int)
+
+
+def detect_and_fix_cycle_structure(df, current_threshold=1.0,
+                                   mode=None, data_format=None):
+    """Process cycle structure.
+
+    For 3-column (single-cycle format) files, cycles can be auto-detected from
+    the current signal when mode == 'auto'. 4-column files keep their own
+    cycle-number column unchanged.
+    """
     df_fixed = df.copy()
-    
-    print(f"\n🔧 Processing cycle structure...")
-    
-    # Check if cycle data is valid
+
+    if mode is None:
+        mode = globals().get('CYCLE_DETECTION_MODE', 'auto')
+    if data_format is None:
+        data_format = globals().get('data_format', None)
+
+    print(f"\n🔧 Processing cycle structure (mode = '{mode}', format = '{data_format}')...")
+
     if 'cycle' not in df_fixed.columns:
         print(f"❌ No cycle column found in data")
         return df_fixed
-    
+
     # Remove rows with NaN cycle numbers
     before_len = len(df_fixed)
     df_fixed = df_fixed.dropna(subset=['cycle'])
     after_len = len(df_fixed)
-    
     if after_len != before_len:
         print(f"🧹 Removed {before_len - after_len} rows with NaN cycle numbers")
-    
+
     if len(df_fixed) == 0:
         print(f"❌ No valid cycle data found")
         return df_fixed
-    
-    # Get unique cycles
+
+    # Signal-based detection: only for 3-column files (no real cycle column)
+    # and only when the user asked for automatic detection.
+    if data_format == 'single_cycle' and mode == 'auto':
+        print(f"   🤖 No cycle column in file - detecting cycles from current "
+              f"(threshold = {current_threshold} mA)")
+        df_fixed['cycle'] = detect_cycles_from_current(
+            df_fixed, current_threshold=current_threshold).astype(int)
+        print(f"   ✅ Detected {df_fixed['cycle'].nunique()} cycle(s) from the signal")
+    else:
+        print(f"   📄 Using existing cycle labels")
+
     cycle_nums = sorted(df_fixed['cycle'].unique())
     print(f"Detected cycles: {cycle_nums}")
-    
-    # For single cycle data, no complex processing needed
+
     if len(cycle_nums) == 1:
         print(f"✅ Single cycle detected - no structure fixes needed")
     else:
         print(f"✅ Multi-cycle data - {len(cycle_nums)} cycles found")
-        # Future: Add complex cycle merging logic here if needed
-    
+
     return df_fixed
 
 def find_ici_starts(df, current_threshold=1.0):
@@ -619,15 +732,24 @@ def run_data_analysis(folder_path=None, txt_file_name=None, interactive=True):
         df_loaded = load_data_flexible(txt_path)
         if df_loaded is None:
             return False
-        
-        # Detect data format (single-cycle vs multi-cycle) and clean data
-        data_format, df_cleaned = detect_data_format(df_loaded)
-        if data_format == "unknown":
-            print("❌ Unsupported data format")
-            return False
-        
-        # Standardize columns based on position (this replaces the old name-based mapping)
-        df_raw = standardize_columns_by_position(df_cleaned, data_format)
+
+        if COLUMN_MAP is not None:
+            # Manual column mapping supplied by the GUI (files with >3 columns)
+            print(f"🗂️ Using manual column mapping: {COLUMN_MAP}")
+            _, df_cleaned = detect_data_format(df_loaded)   # reuse the cleaning step
+            df_raw = build_df_from_map(df_cleaned, COLUMN_MAP)
+            # No cycle column mapped -> treat as single_cycle so signal-based
+            # detection runs; a mapped cycle column -> use it (multi_cycle).
+            data_format = 'multi_cycle' if COLUMN_MAP.get('cycle') else 'single_cycle'
+        else:
+            # Detect data format (single-cycle vs multi-cycle) and clean data
+            data_format, df_cleaned = detect_data_format(df_loaded)
+            if data_format == "unknown":
+                print("❌ Unsupported data format")
+                return False
+            # Standardize columns based on position (this replaces the old name-based mapping)
+            df_raw = standardize_columns_by_position(df_cleaned, data_format)
+
         if df_raw is None:
             return False
         
@@ -637,7 +759,9 @@ def run_data_analysis(folder_path=None, txt_file_name=None, interactive=True):
         print(f"   Columns: {list(df_raw.columns)}")
         
         # Process cycle structure
-        df_raw = detect_and_fix_cycle_structure(df_raw, current_threshold)
+        df_raw = detect_and_fix_cycle_structure(
+            df_raw, current_threshold,
+            mode=CYCLE_DETECTION_MODE, data_format=data_format)
         if len(df_raw) == 0:
             print("❌ No valid data after cycle processing")
             return False
