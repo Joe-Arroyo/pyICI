@@ -196,6 +196,38 @@ def inspect_data_file(file_path):
         print(f"❌ Error inspecting file: {e}")
         return None, []
 
+def _is_headerless(file_path, delimiter):
+    """Return True when the file's first row is entirely numeric, i.e. there is
+    no header row (the first line is already data)."""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            first = f.readline().strip()
+    except Exception:
+        return False
+    fields = [x for x in first.split(delimiter) if x.strip() != '']
+    if not fields:
+        return False
+    for x in fields:
+        try:
+            float(x)
+        except ValueError:
+            return False   # a non-numeric token -> this row is a header
+    return True            # all tokens numeric -> no header row
+
+def _read_table(file_path, delimiter):
+    """Read a delimited file, auto-handling a missing header row.
+
+    If the first row is all-numeric the file is treated as header-less: every
+    row is kept as data and generic column names (col1, col2, ...) are assigned
+    so nothing is lost to being mistaken for a header."""
+    if _is_headerless(file_path, delimiter):
+        df = pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8', header=None)
+        df.columns = [f'col{i + 1}' for i in range(df.shape[1])]
+        print(f"   ℹ️ No header row detected - using generic column names {list(df.columns)}")
+    else:
+        df = pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8')
+    return df
+
 def load_data_flexible(file_path):
     """Load data with flexible format detection"""
     delimiter, sample_lines = inspect_data_file(file_path)
@@ -208,8 +240,8 @@ def load_data_flexible(file_path):
         # Try different approaches to load the data
         print(f"\n📖 Attempting to load data...")
         
-        # Method 1: Use pandas with detected delimiter
-        df = pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8')
+        # Method 1: Use pandas with detected delimiter (auto-handles no header)
+        df = _read_table(file_path, delimiter)
         
         print(f"✅ Data loaded successfully!")
         print(f"   Shape: {df.shape}")
@@ -343,7 +375,7 @@ def peek_columns(file_path):
     if delimiter is None:
         return []
     try:
-        df = pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8')
+        df = _read_table(file_path, delimiter)
     except Exception as e:
         print(f"❌ peek_columns error: {e}")
         return []
