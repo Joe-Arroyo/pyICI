@@ -13,8 +13,6 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from IPython.display import clear_output, display
-import ipywidgets as widgets
 import time
 
 # =============================================================================

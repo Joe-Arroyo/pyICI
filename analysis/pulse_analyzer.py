@@ -12,8 +12,6 @@ Complete rewrite with proper organization and functionality
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import ipywidgets as widgets
-from IPython.display import display, clear_output
 
 # =============================================================================
 # CONFIGURATION
