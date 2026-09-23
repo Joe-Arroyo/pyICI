@@ -27,13 +27,23 @@ Contributions are welcome via pull requests:
 1. Fork the repository and create a branch for your change.
 2. Make your changes. Keep the separation between the `analysis` modules
    (computation) and the `gui` modules (presentation).
-3. Verify that the application still runs (`python main_gui.py`) and that the
+3. Run the test suite (see [Running the tests](#running-the-tests)) and add
+   tests for any new analysis functionality.
+4. Verify that the application still runs (`python main_gui.py`) and that the
    example datasets in [`data/`](data) load and analyze correctly through all
    tabs.
-4. Open a pull request describing what the change does and why.
+5. Open a pull request describing what the change does and why.
 
-For larger changes (new analysis features, new input formats), please open an
-issue first to discuss the idea.
+## Running the tests
+
+pyICI's analysis core is covered by an automated [pytest](https://pytest.org)
+suite. To run it:
+
+```bash
+pip install -e .        # install pyICI and its dependencies
+pip install pytest
+python -m pytest
+```
 
 ## License
 
