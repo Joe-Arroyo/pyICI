@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use pyICI, please cite it using the metadata from this file."
+title: pyICI
+abstract: "A Python GUI tool for Intermittent Current Interruption (ICI) analysis of battery cycling data."
+type: software
+authors:
+  - given-names: José J.
+    family-names: Arroyo-Gómez
+    orcid: "https://orcid.org/0000-0001-8214-0645"
+  - given-names: Israel
+    family-names: Temprano
+    orcid: "https://orcid.org/0000-0001-5610-8908"
+  - given-names: Louis F. J.
+    family-names: Piper
+    orcid: "https://orcid.org/0000-0002-3421-3210"
+  - given-names: Ashok S.
+    family-names: Menon
+    orcid: "https://orcid.org/0000-0001-8148-8615"
+version: 1.1.0
+date-released: 2026-09-19
+license: MIT
+repository-code: "https://github.com/Joe-Arroyo/pyICI"
+url: "https://github.com/Joe-Arroyo/pyICI"
+keywords:
+  - electrochemistry
+  - batteries
+  - intermittent current interruption
+  - internal resistance
+  - diffusion
