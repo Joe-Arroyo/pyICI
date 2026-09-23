@@ -1,44 +1,26 @@
 # pyICI - Python Dependencies
 
-# Core Dependencies (Required)
+# Core dependencies (required)
 numpy>=1.24.0
 pandas>=2.0.0
 matplotlib>=3.7.0
-ipywidgets>=8.0.0
-IPython>=8.0.0
 
-#GUI Framework
-# tkinter - comes with Python standard lybrary (no install required)
-# Linux users may need:
-# Debian/Ubuntu: sudo apt install python3-tk# GUI Framework
-# tkinter - comes with Python standard library (no install needed)
+# GUI framework
+# tkinter ships with the Python standard library (no pip install needed).
 #
 # Platform-specific notes:
 #
 # Windows:
-#   tkinter is included with the standard Python installer from python.org
-#   Use: pip install -r requirements.txt
+#   Included with the standard Python installer from python.org.
 #
 # macOS:
-#   tkinter is included when installing Python from python.org
-#   If using Homebrew Python, install separately: brew install python-tk
-#   Use: pip install -r requirements.txt
+#   Included with Python from python.org.
+#   If using Homebrew Python: brew install python-tk
 #
-# Linux - Ubuntu/Debian:
-#   sudo apt install python3-tk
-#   Virtual environment recommended to avoid system pip restrictions:
-#     python3 -m venv venv && source venv/bin/activate
-#     pip install -r requirements.txt
+# Linux - Ubuntu/Debian:  sudo apt install python3-tk
+# Linux - Fedora:         sudo dnf install python3-tkinter
+# Linux - CentOS/RHEL:    sudo yum install python3-tkinter
 #
-# Linux - Fedora:
-#   sudo dnf install python3-tkinter
-#   Virtual environment recommended:
-#     python3 -m venv venv && source venv/bin/activate
-#     pip install -r requirements.txt
-#
-# Linux - CentOS/RHEL:
-#   sudo yum install python3-tkinter
-#   Virtual environment recommended:
-#     python3 -m venv venv && source venv/bin/activate
-#     pip install -r requirements.txt
-
+# A virtual environment is recommended:
+#   python3 -m venv venv && source venv/bin/activate
+#   pip install -r requirements.txt
