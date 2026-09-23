@@ -5,6 +5,26 @@ All notable changes to pyICI are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-23
+
+### Added
+- `pyproject.toml`: pyICI is now installable with `pip install .` and provides a
+  `pyici` command-line entry point to launch the GUI.
+- Automated test suite (`pytest`) covering the analysis core — known-answer tests
+  for the ΔV vs. √t regression and for R / k extraction with error propagation.
+- `CITATION.cff` so the repository can be cited directly.
+- `CODE_OF_CONDUCT.md` (Contributor Covenant).
+- Issue templates for bug reports and feature requests.
+- "Running the tests" section in `CONTRIBUTING.md`.
+
+### Changed
+- Installation now uses `pip install .` (dependencies declared in
+  `pyproject.toml`); README updated accordingly.
+
+### Removed
+- Unused `ipywidgets` and `IPython` dependencies (leftovers from the notebook
+  origin) removed from the code and `requirements.txt`.
+
 ## [1.1.0] - 2026-09-19
 
 ### Added
@@ -50,5 +70,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error propagation. Supports single-cycle (3-column) and multi-cycle
   (4-column) input files.
 
+[1.2.0]: https://github.com/Joe-Arroyo/pyICI/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Joe-Arroyo/pyICI/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Joe-Arroyo/pyICI/releases/tag/v1.0.0
