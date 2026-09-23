@@ -111,8 +111,9 @@ You should see `(venv)` in your terminal prompt. To deactivate later, run `deact
 
 ### Step4:. **Install Python dependencies:**
 ```bash
- # Install required packages
-   pip install -r requirements.txt
+pip install -e .     # ends with: Successfully installed pyici-1.1.0
+pyici                # GUI launches
+python main_gui.py   # still works
 ```
 
 ### Step 5: Run pyICI

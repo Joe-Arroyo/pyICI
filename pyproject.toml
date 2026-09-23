@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyici"
+version = "1.1.0"
+description = "GUI tool for Intermittent Current Interruption (ICI) analysis of battery cycling data"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "José J. Arroyo-Gómez" },
+]
+keywords = [
+    "electrochemistry",
+    "batteries",
+    "intermittent current interruption",
+    "internal resistance",
+    "diffusion",
+]
+dependencies = [
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "matplotlib>=3.7.0",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+]
+
+[project.urls]
+Homepage = "https://github.com/Joe-Arroyo/pyICI"
+Repository = "https://github.com/Joe-Arroyo/pyICI"
+
+[project.scripts]
+pyici = "main_gui:main"
+
+[tool.setuptools]
+packages = ["analysis", "gui"]
+py-modules = ["main_gui"]
