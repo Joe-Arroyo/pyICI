@@ -21,10 +21,6 @@ import os
 # Analysis parameters
 MAX_REST_DURATION = 1800  # seconds
 
-# Global variables (will be set from data_loader)
-df_raw = None
-cycle_list = []
-
 # =============================================================================
 # CORE CLASSIFICATION FUNCTIONS
 # =============================================================================
