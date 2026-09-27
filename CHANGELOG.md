@@ -5,6 +5,16 @@ All notable changes to pyICI are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] 2026--9-26
+
+### Removed
+- Internal cleanup: removed leftover Jupyter/CLI code from the `analysis` modules
+  — the `run_cell1`/`run_cell2`/`run_cell3` wrappers, the interactive `console_*`
+  interfaces, and the standalone `run_*` launchers (`run_phase_classification`,
+  `run_pulse_analysis`, `run_regression_analysis`, `run_kinetic_analysis`), plus
+  the `__main__` blocks. Also dropped the now-unused module-level globals in
+  `phase_classifier`. No change to application behaviour.
+
 ## [1.2.0] - 2026-09-23
 
 ### Added
@@ -70,6 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error propagation. Supports single-cycle (3-column) and multi-cycle
   (4-column) input files.
 
+[Unreleased]: https://github.com/Joe-Arroyo/pyICI/compare/v1.2.0...HEAD
 [1.2.0]: https://github.com/Joe-Arroyo/pyICI/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Joe-Arroyo/pyICI/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Joe-Arroyo/pyICI/releases/tag/v1.0.0
