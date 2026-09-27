@@ -847,28 +847,3 @@ def run_data_analysis(folder_path=None, txt_file_name=None, interactive=True):
         traceback.print_exc()
         return False
 
-# =============================================================================
-# BACKWARD COMPATIBILITY FUNCTIONS
-# =============================================================================
-
-def run_cell1(folder_path=None, txt_file_name=None):
-    """
-    Backward compatibility wrapper - calls run_data_analysis with non-interactive mode
-    """
-    return run_data_analysis(folder_path, txt_file_name, interactive=False)
-
-# =============================================================================
-# STANDALONE EXECUTION
-# =============================================================================
-
-if __name__ == "__main__":
-    print("Running ICI Battery Analysis - Data Loading Module")
-    print("Supports both single-cycle (3 columns) and multi-cycle (4 columns) formats")
-    print("Interactive mode - will prompt for file selection and parameters")
-    
-    # Run in interactive mode - user selects file and parameters
-    success = run_data_analysis()
-    if success:
-        print("✅ Data loading module completed successfully")
-    else:
-        print("❌ Data loading module failed")
