@@ -338,37 +338,3 @@ def parse_cycle_input(input_str, available_cycles):
     except Exception as e:
         print(f"❌ Error parsing cycles: {e}")
         return []
-
-def run_kinetic_analysis(df_input=None, interactive=True):
-    global df_raw, cycle_list
-    
-    if df_input is not None:
-        df_raw = df_input
-        cycle_list = sorted(df_raw['cycle'].unique())
-    else:
-        try:
-            from analysis.data_loader import df_raw as loader_df, cycle_list as loader_cycles
-            if loader_df is None:
-                print("❌ No data loaded. Please run data_loader first.")
-                return False
-            df_raw = loader_df
-            cycle_list = loader_cycles
-        except ImportError:
-            print("❌ Could not import data from data_loader")
-            return False
-    
-    print("\n" + "="*70)
-    print("⚗️ R & k KINETIC ANALYSIS MODULE")
-    print("="*70)
-    print(f"✅ Data loaded: {len(df_raw)} points across {len(cycle_list)} cycles")
-    print(f"Available cycles: {cycle_list}")
-    print(f"Default parameters: R1S={DEFAULT_R1S}, R1L={DEFAULT_R1L}")
-    
-    if not interactive:
-        return True
-    
-    print("\nConsole interface not implemented. Use GUI for R & k analysis.")
-    return True
-
-if __name__ == "__main__":
-    run_kinetic_analysis()
