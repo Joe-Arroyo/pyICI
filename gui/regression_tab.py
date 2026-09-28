@@ -681,16 +681,13 @@ class RegressionTab:
         self.current_cycle = int(self.cycle_combo.get())
 
         # Load cycle data
-        ra.df_raw = self.df_raw
-        ra.cycle_list = self.cycle_list
+        result = ra.load_cycle_for_regression(self.df_raw, self.current_cycle)
 
-        success = ra.load_cycle_for_regression(self.current_cycle)
-
-        if success:
-            self.charge_pulse_nums = ra.charge_pulse_nums.copy()
-            self.discharge_pulse_nums = ra.discharge_pulse_nums.copy()
-            self.charge_data_pulse = ra.charge_data_pulse.copy()
-            self.discharge_data_pulse = ra.discharge_data_pulse.copy()
+        if result is not None:
+            self.charge_pulse_nums = list(result.charge_pulses)
+            self.discharge_pulse_nums = list(result.discharge_pulses)
+            self.charge_data_pulse = result.charge_data
+            self.discharge_data_pulse = result.discharge_data
 
             # Reset to first pulse
             self.current_charge_idx = 0
