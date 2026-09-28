@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
+from collections import namedtuple
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -32,19 +33,6 @@ ZERO_THRESHOLD = 1e-5
 # =============================================================================
 # GLOBAL VARIABLES
 # =============================================================================
-
-# Data from data_loader
-df_raw = None
-cycle_list = []
-
-# Current analysis state
-current_cycle = None
-
-# Processed pulse data
-charge_data_pulse = None
-discharge_data_pulse = None
-charge_pulse_nums = []
-discharge_pulse_nums = []
 
 # Storage for regression results
 regression_results = {'Charge': [], 'Discharge': []}
@@ -258,82 +246,60 @@ def compute_r2_all_pulses(data, pulse_numbers, r1_start, r1_length):
 # CYCLE LOADING AND PROCESSING
 # =============================================================================
 
-def load_cycle_for_regression(cycle_num):
-    """Load and prepare cycle data for regression analysis."""
-    global current_cycle, charge_data_pulse, discharge_data_pulse
-    global charge_pulse_nums, discharge_pulse_nums
-    
+CycleRegression = namedtuple(
+    "CycleRegression",
+    ["cycle", "charge_data", "charge_pulses", "discharge_data", "discharge_pulses"],
+)
+
+
+def load_cycle_for_regression(df_raw, cycle_num):
+    """Prepare one cycle's charge/discharge pulses for regression.
+
+    Returns a CycleRegression with the per-phase pulse DataFrames (each carrying
+    pulse_number, V0 and t0) and their valid pulse-number lists, or None if the
+    cycle has no data or no valid pulses.
+    """
     if df_raw is None:
-        print("❌ No data loaded")
-        return False
-    
-    # Get cycle data
+        return None
+
     cycle_df = df_raw[df_raw['cycle'] == cycle_num].copy()
-    
     if len(cycle_df) == 0:
-        print(f"❌ No data found for cycle {cycle_num}")
-        return False
-    
-    current_cycle = cycle_num
-    
-    print(f"Analyzing cycle {cycle_num}...")
-    print(f"  Cycle {cycle_num} has {len(cycle_df)} data points")
-    
-    # CRITICAL: Add phase classification if not present
+        return None
+
     if 'cycle_phase' not in cycle_df.columns:
-        print("  Adding phase classification...")
         cycle_df['cycle_phase'] = classify_charge_discharge(cycle_df)
-    
-    # Show phase distribution
-    phase_dist = cycle_df['cycle_phase'].value_counts().to_dict()
-    print(f"  Phase distribution: {phase_dist}")
-    
-    # Separate charge and discharge data using cycle_phase
+
     charge_df = cycle_df[cycle_df['cycle_phase'] == 'charge'].copy()
     discharge_df = cycle_df[cycle_df['cycle_phase'] == 'discharge'].copy()
-    
-    print(f"Assigning pulse numbers with max rest duration: {MAX_REST_DURATION}s")
-    
-    # Process charge pulses
+
     if len(charge_df) > 0:
-        charge_data_pulse = assign_valid_pulses(charge_df, MAX_REST_DURATION)
-        charge_pulse_nums = [p for p in charge_data_pulse['pulse_number'].unique() if p > 0]
-        print(f"Assigned {len(charge_pulse_nums)} valid charge pulses")
-        
-        if len(charge_pulse_nums) > 0:
-            print("Computing V0 and t0 values for charge pulses...")
-            charge_data_pulse = compute_V0_t0(charge_data_pulse)
-            print(f"Computed V0/t0 for {len(charge_pulse_nums)} charge pulse measurements")
+        charge_data = assign_valid_pulses(charge_df, MAX_REST_DURATION)
+        charge_pulses = [p for p in charge_data['pulse_number'].unique() if p > 0]
+        if charge_pulses:
+            charge_data = compute_V0_t0(charge_data)
     else:
-        charge_data_pulse = pd.DataFrame()
-        charge_pulse_nums = []
-        print("No charge data found")
-    
-    # Process discharge pulses
+        charge_data = pd.DataFrame()
+        charge_pulses = []
+
     if len(discharge_df) > 0:
-        discharge_data_pulse = assign_valid_pulses(discharge_df, MAX_REST_DURATION)
-        discharge_pulse_nums = [p for p in discharge_data_pulse['pulse_number'].unique() if p > 0]
-        print(f"Assigned {len(discharge_pulse_nums)} valid discharge pulses")
-        
-        if len(discharge_pulse_nums) > 0:
-            print("Computing V0 and t0 values for discharge pulses...")
-            discharge_data_pulse = compute_V0_t0(discharge_data_pulse)
-            print(f"Computed V0/t0 for {len(discharge_pulse_nums)} discharge pulse measurements")
+        discharge_data = assign_valid_pulses(discharge_df, MAX_REST_DURATION)
+        discharge_pulses = [p for p in discharge_data['pulse_number'].unique() if p > 0]
+        if discharge_pulses:
+            discharge_data = compute_V0_t0(discharge_data)
     else:
-        discharge_data_pulse = pd.DataFrame()
-        discharge_pulse_nums = []
-        print("No discharge data found")
-    
-    # Summary
-    print(f"Cycle {cycle_num} loaded:")
-    print(f"  • Charge pulses: {len(charge_pulse_nums)} - {charge_pulse_nums}")
-    print(f"  • Discharge pulses: {len(discharge_pulse_nums)} - {discharge_pulse_nums}")
-    
-    if len(charge_pulse_nums) == 0 and len(discharge_pulse_nums) == 0:
-        print("  • No valid pulses found")
-        return False
-    
-    return True
+        discharge_data = pd.DataFrame()
+        discharge_pulses = []
+
+    if not charge_pulses and not discharge_pulses:
+        return None
+
+    return CycleRegression(
+        cycle=cycle_num,
+        charge_data=charge_data,
+        charge_pulses=charge_pulses,
+        discharge_data=discharge_data,
+        discharge_pulses=discharge_pulses,
+    )
 
 # =============================================================================
 # VISUALIZATION FUNCTIONS
