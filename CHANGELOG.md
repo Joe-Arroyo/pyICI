@@ -5,7 +5,13 @@ All notable changes to pyICI are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] 2026--9-26
+## [Unreleased]
+
+### Changed
+- Internal refactor (no change to application behaviour): `regression_analyzer` no
+  longer holds analysis data in module-level globals. `load_cycle_for_regression`
+  now takes the data as arguments and returns a result object, so the regression
+  analysis can be run and tested independently of the GUI.
 
 ### Removed
 - Internal cleanup: removed leftover Jupyter/CLI code from the `analysis` modules
@@ -13,7 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interfaces, and the standalone `run_*` launchers (`run_phase_classification`,
   `run_pulse_analysis`, `run_regression_analysis`, `run_kinetic_analysis`), plus
   the `__main__` blocks. Also dropped the now-unused module-level globals in
-  `phase_classifier`. No change to application behaviour.
+  `phase_classifier` and `regression_analyzer`. No change to application behaviour.
+- Internal cleanup: removed unused plotting/export helpers
+  (`plot_all_cycles_r2_overview`, `export_regression_results`) from
+  `regression_analyzer`.
 
 ## [1.2.0] - 2026-09-23
 
