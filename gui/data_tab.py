@@ -355,18 +355,16 @@ class DataTab:
             folder_path = os.path.dirname(filepath)
             filename = os.path.basename(filepath)
             
-            # Update data_loader parameters with GUI values
+                        # Read parameters from the GUI
             try:
-                data_loader.MAX_REST_DURATION = float(self.max_rest_var.get())
-                data_loader.CURRENT_THRESHOLD = float(self.current_threshold_var.get())
+                float(self.max_rest_var.get())  # validated; kept for the UI field
+                current_threshold = float(self.current_threshold_var.get())
             except ValueError:
                 messagebox.showwarning("Invalid Parameters",
                     "Invalid parameter values. Using defaults.")
-                data_loader.MAX_REST_DURATION = 1800
-                data_loader.CURRENT_THRESHOLD = 1.0
+                current_threshold = 1.0
 
-            # Cycle detection mode from GUI (files without a cycle column)
-            data_loader.CYCLE_DETECTION_MODE = self.cycle_mode_var.get()
+            cycle_detection_mode = self.cycle_mode_var.get()
 
             # Column mapping: for files with more than 3 columns, ask the user
             # to map each column to a role (time / voltage / current / cycle).
@@ -380,46 +378,30 @@ class DataTab:
                 if mapping is None:
                     self.status_label.config(text="Load cancelled")
                     return
-                data_loader.COLUMN_MAP = mapping
+                column_map = mapping
             else:
-                data_loader.COLUMN_MAP = None
+                column_map = None
 
-            # Temporarily disable matplotlib plotting to prevent popup windows
-            original_backend = plt.get_backend()
-            plt.switch_backend('Agg')  # Non-interactive backend
-            
-            # Temporarily replace plt.show with a no-op function
-            original_show = plt.show
-            plt.show = lambda: None
-            
-            try:
-                # Call the actual data_loader function in non-interactive mode
-                success = data_loader.run_data_analysis(
-                    folder_path=folder_path,
-                    txt_file_name=filename,
-                    interactive=False
-                )
-            finally:
-                # Restore original matplotlib settings
-                plt.show = original_show
-                plt.switch_backend(original_backend)
-            
-            if not success:
-                messagebox.showerror("Load Error", 
+            # Call the analysis layer (data in, result out)
+            result = data_loader.run_data_analysis(
+                folder_path=folder_path,
+                txt_file_name=filename,
+                current_threshold=current_threshold,
+                cycle_detection_mode=cycle_detection_mode,
+                column_map=column_map,
+            )
+
+            if result is None or result.df_raw is None:
+                messagebox.showerror("Load Error",
                     "Failed to load data. Check console for details.")
                 return
-            
-            # Get the loaded data from data_loader module
-            if data_loader.df_raw is None:
-                messagebox.showerror("Load Error", 
-                    "No data was loaded. Check file format and content.")
-                return
-            
+
             # Store references to the loaded data
-            self.df_raw = data_loader.df_raw
-            self.cycle_list = data_loader.cycle_list if data_loader.cycle_list else []
-            self.ici_starts = data_loader.ici_starts if data_loader.ici_starts else {}
-            self.plot_data = data_loader.plot_data if hasattr(data_loader, 'plot_data') else self.df_raw
+            self.df_raw = result.df_raw
+            self.cycle_list = result.cycle_list if result.cycle_list else []
+            self.ici_starts = result.ici_starts if result.ici_starts else {}
+            self.plot_data = result.plot_data if result.plot_data is not None else result.df_raw
+            self.data_format = result.data_format
             self.current_file = filename
             
             # ===================================================================
@@ -445,10 +427,7 @@ class DataTab:
                 print(f"  Discharge: {phase_counts.get('discharge', 0):,} points ({phase_counts.get('discharge', 0)/total*100:.1f}%)")
                 print(f"  Rest: {phase_counts.get('rest', 0):,} points ({phase_counts.get('rest', 0)/total*100:.1f}%)")
                 print("="*60)
-                
-                # Update data_loader module variable too
-                data_loader.df_raw = self.df_raw
-                
+                                                             
             except Exception as e:
                 print(f"Warning: Auto-classification failed: {e}")
                 print("Tabs will auto-classify as needed")
@@ -465,7 +444,7 @@ class DataTab:
             self.shared_data['ici_starts'] = self.ici_starts
             self.shared_data['plot_data'] = self.plot_data
             self.shared_data['filename'] = filename
-            self.shared_data['data_format'] = getattr(data_loader, 'data_format', 'unknown')
+            self.shared_data['data_format'] = getattr(self, 'data_format', 'unknown')
             self.shared_data['phase_classified'] = 'cycle_phase' in self.df_raw.columns
 
             # Multi-file: store record and set as active
@@ -797,8 +776,8 @@ class DataTab:
         info.append(f"File: {self.current_file}")
         info.append(f"Data Points: {len(self.df_raw):,}")
         
-        if hasattr(data_loader, 'data_format'):
-            info.append(f"Format: {data_loader.data_format}")
+        if getattr(self, 'data_format', None):
+            info.append(f"Format: {self.data_format}")
             
         info.append(f"Cycles: {len(self.cycle_list)} - Range: {min(self.cycle_list) if self.cycle_list else 'N/A'} to {max(self.cycle_list) if self.cycle_list else 'N/A'}")
         info.append(f"ICI Start Points: {len(self.ici_starts)}")
