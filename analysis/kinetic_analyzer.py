@@ -25,9 +25,6 @@ from analysis.phase_classifier import calculate_capacity
 DEFAULT_R1S = DEFAULT_R1_START
 DEFAULT_R1L = DEFAULT_R1_LENGTH
 
-df_raw = None
-cycle_list = []
-
 def get_pulse_t0_values(data, pulse_numbers):
     """Return t0 (the end-of-active-period timestamp) for each pulse, aligned
     1:1 with pulse_numbers.
@@ -184,7 +181,7 @@ def compute_R_k(data, pulse_numbers, regression_results):
     
     return voltages, (np.array(R_vals), np.array(R_errs)), (np.array(k_vals), np.array(k_errs))
 
-def compute_R_k_for_cycle(cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, mass_mg=0):
+def compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, mass_mg=0):
     if df_raw is None:
         return None
     
@@ -251,18 +248,18 @@ def compute_R_k_for_cycle(cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, sa
         'specific_capacity': specific_capacity_vals
     }
 
-def compute_R_k_for_cycles(cycle_nums, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, mass_mg=0):
+def compute_R_k_for_cycles(df_raw, cycle_nums, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, mass_mg=0):
     results = []
 
     for cycle_num in cycle_nums:
-        result = compute_R_k_for_cycle(cycle_num, phase, r1s, r1l, saved_params, mass_mg)
+        result = compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s, r1l, saved_params, mass_mg)
         if result:
             result['cycle'] = cycle_num
             results.append(result)
 
     return results
 
-def export_R_k_results(cycle_nums, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, output_folder="exports", filename_prefix="", mass_mg=0):
+def export_R_k_results(df_raw, cycle_nums, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, output_folder="exports", filename_prefix="", mass_mg=0):
     if df_raw is None:
         print("❌ No data loaded")
         return False
@@ -279,7 +276,7 @@ def export_R_k_results(cycle_nums, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_param
             all_data = []
             
             for cycle_num in cycle_nums:
-                result = compute_R_k_for_cycle(cycle_num, phase, r1s, r1l, saved_params, mass_mg)
+                result = compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s, r1l, saved_params, mass_mg)
 
                 if result:
                     for i in range(len(result['voltages'])):

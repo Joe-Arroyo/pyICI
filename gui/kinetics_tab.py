@@ -1060,8 +1060,6 @@ class KineticsTab:
         self.shared_data['regression_params'] = all_params.get(fname, {})
         self.df_raw     = rec['df_raw']
         self.cycle_list = rec['cycle_list']
-        ka.df_raw = self.df_raw
-        ka.cycle_list = self.cycle_list
         self._refresh_kin_files_panel()
         self.update_status(f"Active: {os.path.basename(fname)}  |  {len(self.cycle_list)} cycles")
 
@@ -1084,9 +1082,6 @@ class KineticsTab:
             if len(self.cycle_list) == 0:
                 self.cycle_list = sorted(self.df_raw['cycle'].unique().tolist())
             
-            # Sync data with kinetic_analyzer module
-            ka.df_raw = self.df_raw
-            ka.cycle_list = self.cycle_list
             
             # Display available cycles
             if self.cycle_list:
@@ -1372,10 +1367,6 @@ class KineticsTab:
 
             total_cycles = len(selected_cycles)
 
-            # Sync ka with this file's data
-            ka.df_raw = rec['df_raw']
-            ka.cycle_list = rec['cycle_list']
-
             mass_mg = self._get_mass_for_file(fname)
             if x_key == 'specific_capacity' and mass_mg <= 0:
                 # No mass on record for this file — skip it rather than plot a
@@ -1385,7 +1376,7 @@ class KineticsTab:
 
             # --- CHARGE ---
             charge_results = ka.compute_R_k_for_cycles(
-                selected_cycles, 'charge', ka.DEFAULT_R1S, ka.DEFAULT_R1L, saved_params, mass_mg)
+                rec['df_raw'], selected_cycles, 'charge', ka.DEFAULT_R1S, ka.DEFAULT_R1L, saved_params, mass_mg)
 
             for idx, result in enumerate(charge_results):
                 x_vals   = result[x_key]
@@ -1422,7 +1413,7 @@ class KineticsTab:
 
             # --- DISCHARGE ---
             discharge_results = ka.compute_R_k_for_cycles(
-                selected_cycles, 'discharge', ka.DEFAULT_R1S, ka.DEFAULT_R1L, saved_params, mass_mg)
+                rec['df_raw'], selected_cycles, 'discharge', ka.DEFAULT_R1S, ka.DEFAULT_R1L, saved_params, mass_mg)
 
             for idx, result in enumerate(discharge_results):
                 x_vals   = result[x_key]
@@ -1537,6 +1528,7 @@ class KineticsTab:
         self.charge_ax_k = self.charge_fig.add_subplot(212)
         
         charge_results = ka.compute_R_k_for_cycles(
+            self.df_raw,
             selected_cycles,
             'charge',
             ka.DEFAULT_R1S,
@@ -1766,6 +1758,7 @@ class KineticsTab:
         self.discharge_ax_k = self.discharge_fig.add_subplot(212)
         
         discharge_results = ka.compute_R_k_for_cycles(
+            self.df_raw,
             selected_cycles,
             'discharge',
             ka.DEFAULT_R1S,
@@ -1999,7 +1992,7 @@ class KineticsTab:
             mass_mg = self._get_mass_for_file(self.shared_data.get('active_file'))
 
             success = ka.export_R_k_results(
-                selected_cycles, ka.DEFAULT_R1S, ka.DEFAULT_R1L,
+                self.df_raw, selected_cycles, ka.DEFAULT_R1S, ka.DEFAULT_R1L,
                 saved_params, output_folder, filename_prefix, mass_mg)
             
             if success:
@@ -2076,16 +2069,12 @@ class KineticsTab:
             if not selected_cycles:
                 continue
 
-            # Sync ka with this file
-            ka.df_raw = rec['df_raw']
-            ka.cycle_list = rec['cycle_list']
-
             filename_prefix = os.path.splitext(os.path.basename(fname))[0]
             mass_mg = self._get_mass_for_file(fname)
 
             try:
                 success = ka.export_R_k_results(
-                    selected_cycles, ka.DEFAULT_R1S, ka.DEFAULT_R1L,
+                    rec['df_raw'], selected_cycles, ka.DEFAULT_R1S, ka.DEFAULT_R1L,
                     saved_params, output_folder, filename_prefix, mass_mg)
                 if success:
                     exported.append(filename_prefix)
@@ -2094,11 +2083,6 @@ class KineticsTab:
             except Exception as e:
                 failed.append(filename_prefix)
                 print(f"Export error for {fname}: {e}")
-
-        # Restore active file ka state
-        if self.df_raw is not None:
-            ka.df_raw = self.df_raw
-            ka.cycle_list = self.cycle_list
 
         msg = f"Exported {len(exported)} files to:\n{output_folder}\n\n"
         if exported:
