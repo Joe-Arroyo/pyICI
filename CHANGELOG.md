@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-29
+
+### Added
+- The analysis package (`analysis/`) can now be used as a library, independently
+  of the GUI: each module takes its inputs as arguments and returns results
+  (e.g. `run_data_analysis`, `load_cycle_for_regression`, `analyze_cycle_pulses`,
+  `compute_R_k_for_cycle`), so ICI processing can be scripted and unit-tested
+  without launching tkinter. The analysis core is now covered by an automated
+  headless test suite.
+
 ### Changed
 - Internal refactor (no change to application behaviour): `regression_analyzer` no
   longer holds analysis data in module-level globals. `load_cycle_for_regression`
@@ -107,7 +117,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error propagation. Supports single-cycle (3-column) and multi-cycle
   (4-column) input files.
 
-[Unreleased]: https://github.com/Joe-Arroyo/pyICI/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Joe-Arroyo/pyICI/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Joe-Arroyo/pyICI/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Joe-Arroyo/pyICI/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Joe-Arroyo/pyICI/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Joe-Arroyo/pyICI/releases/tag/v1.0.0
