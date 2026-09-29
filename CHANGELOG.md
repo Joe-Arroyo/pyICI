@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer holds analysis data in module-level globals. `compute_R_k_for_cycle`,
   `compute_R_k_for_cycles`, and `export_R_k_results` now take the data as an
   argument, so R / k extraction can be run and tested independently of the GUI.
+- Internal refactor (no change to application behaviour): `pulse_analyzer` no
+  longer holds analysis data in module-level globals. `analyze_cycle_pulses` now
+  takes the data as an argument and returns a result object, so pulse analysis
+  can be run and tested independently of the GUI. Removed dead notebook-era
+  plotting helpers (`plot_pulse`, `plot_rest_period`, `plot_cycle_pulse_overview`,
+  `plot_individual_pulse_detailed`) that the GUI never called.
 
 ### Removed
 - Internal cleanup: removed leftover Jupyter/CLI code from the `analysis` modules
