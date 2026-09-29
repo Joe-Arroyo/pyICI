@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 ICI Battery Analysis - Pulse Analyzer Module
-Interactive Pulse Analysis & Visualization with Multi-Cycle Support
-Complete rewrite with proper organization and functionality
+Pulse assignment, V0/t0 computation, and per-cycle pulse analysis.
+Pure analysis layer: functions take data as arguments and return results.
 """
 
 # =============================================================================
@@ -11,7 +11,7 @@ Complete rewrite with proper organization and functionality
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+from collections import namedtuple
 
 # =============================================================================
 # CONFIGURATION
@@ -20,26 +20,19 @@ import matplotlib.pyplot as plt
 MAX_REST_DURATION = 1800  # seconds
 
 # =============================================================================
-# GLOBAL VARIABLES
+# RESULT TYPE
 # =============================================================================
 
-# Data from data_loader
-df_raw = None
-cycle_list = []
+PulseAnalysis = namedtuple(
+    "PulseAnalysis",
+    ["cycle", "charge_data", "charge_pulses", "discharge_data", "discharge_pulses"],
+)
 
-# Current analysis state
-current_cycle = None
-current_cycle_data = None
 
-# Processed pulse data
-charge_data_rest = None
-discharge_data_rest = None
-charge_pulse_nums = []
-discharge_pulse_nums = []
+def _empty_analysis(cycle_num):
+    """A PulseAnalysis with no pulses (used for the no-usable-data paths)."""
+    return PulseAnalysis(cycle_num, pd.DataFrame(), [], pd.DataFrame(), [])
 
-# Legacy variables for compatibility
-pulse_data_charge = {}
-pulse_data_discharge = {}
 
 # =============================================================================
 # PULSE ASSIGNMENT FUNCTIONS
@@ -151,54 +144,45 @@ def get_phase_classifier():
             return classify_charge_discharge
 
 # =============================================================================
-# MAIN ANALYSIS FUNCTIONS
+# MAIN ANALYSIS FUNCTION
 # =============================================================================
 
-def analyze_cycle_pulses(cycle_num):
+def analyze_cycle_pulses(df_raw, cycle_num):
     """
-    Main function to analyze all pulses in a cycle
-    Sets global variables for charge and discharge data
-    NOW WITH IMPROVED ERROR HANDLING AND AUTOMATIC CLASSIFICATION
+    Analyze all pulses in one cycle.
+
+    Returns a PulseAnalysis: per-phase DataFrames (each carrying pulse_number,
+    V0, t0, rest) and the valid pulse-number lists. On any path with no usable
+    charge/discharge data the DataFrames are empty and the lists are empty.
     """
-    global current_cycle, current_cycle_data
-    global charge_data_rest, discharge_data_rest, charge_pulse_nums, discharge_pulse_nums
-    
     print(f"\n{'='*60}")
     print(f"PULSE ANALYSIS FOR CYCLE {cycle_num}")
     print(f"{'='*60}")
-    
-    # Input validation
+
     if df_raw is None:
         print("❌ ERROR: No data available for analysis")
         print("   → Please load data first using Data Loader tab")
-        return None, [], []
-    
-    # Get cycle data
+        return _empty_analysis(cycle_num)
+
     cycle_data = df_raw[df_raw['cycle'] == cycle_num].copy()
     if len(cycle_data) == 0:
         available = sorted(df_raw['cycle'].unique().tolist())
         print(f"❌ ERROR: No data found for cycle {cycle_num}")
         print(f"   → Available cycles: {available}")
-        return None, [], []
-    
+        return _empty_analysis(cycle_num)
+
     print(f"✓ Found {len(cycle_data)} data points for cycle {cycle_num}")
-    
+
     # Phase classification with comprehensive error handling
     needs_classification = 'cycle_phase' not in cycle_data.columns
-    
     if needs_classification:
         print(f"⚠  Cycle {cycle_num} not yet classified - classifying now...")
-        
         try:
-            # Try to get classifier function
             classify_func = get_phase_classifier()
             cycle_data['cycle_phase'] = classify_func(cycle_data)
             print(f"✓ Phase classification completed using classifier module")
-            
         except Exception as e:
             print(f"⚠  Classifier import failed ({e}), using fallback...")
-            
-            # Emergency fallback classifier
             try:
                 labels = []
                 for current in cycle_data['I/mA']:
@@ -210,43 +194,39 @@ def analyze_cycle_pulses(cycle_num):
                         labels.append('rest')
                 cycle_data['cycle_phase'] = labels
                 print(f"✓ Emergency classification completed successfully")
-                
             except Exception as e2:
                 print(f"❌ ERROR: Both classification methods failed: {e2}")
-                return None, [], []
+                return _empty_analysis(cycle_num)
     else:
         print(f"✓ Cycle already classified")
-    
-    # Verify classification worked
+
     if 'cycle_phase' not in cycle_data.columns:
         print(f"❌ ERROR: Classification failed - no cycle_phase column")
-        return None, [], []
-    
+        return _empty_analysis(cycle_num)
+
     unique_phases = cycle_data['cycle_phase'].unique()
     print(f"   Detected phases: {list(unique_phases)}")
-    
+
     # Separate by phase
     charge_data = cycle_data[cycle_data['cycle_phase'] == 'charge'].copy()
     discharge_data = cycle_data[cycle_data['cycle_phase'] == 'discharge'].copy()
     rest_data = cycle_data[cycle_data['cycle_phase'] == 'rest'].copy()
-    
+
     print(f"✓ Phase separation:")
     print(f"   • Charge: {len(charge_data)} points")
     print(f"   • Discharge: {len(discharge_data)} points")
     print(f"   • Rest: {len(rest_data)} points")
-    
-    # Check if we have any charge or discharge data
+
     if len(charge_data) == 0 and len(discharge_data) == 0:
         print(f"⚠  WARNING: No charge or discharge data found in cycle {cycle_num}")
         print(f"   This cycle appears to contain only rest periods")
-        return None, [], []
-    
-    # Reset global variables
+        return _empty_analysis(cycle_num)
+
     charge_data_rest = pd.DataFrame()
     discharge_data_rest = pd.DataFrame()
     charge_pulse_nums = []
     discharge_pulse_nums = []
-    
+
     # Process charge pulses with error handling
     if len(charge_data) > 0:
         try:
@@ -264,7 +244,7 @@ def analyze_cycle_pulses(cycle_num):
             traceback.print_exc()
     else:
         print(f"⚠  No charge data to process")
-    
+
     # Process discharge pulses with error handling
     if len(discharge_data) > 0:
         try:
@@ -282,28 +262,7 @@ def analyze_cycle_pulses(cycle_num):
             traceback.print_exc()
     else:
         print(f"⚠  No discharge data to process")
-    
-    # Combine processed data for return
-    processed_data_list = []
-    if len(charge_data_rest) > 0:
-        processed_data_list.append(charge_data_rest)
-    if len(discharge_data_rest) > 0:
-        processed_data_list.append(discharge_data_rest)
-    
-    if processed_data_list:
-        current_cycle_data = pd.concat(processed_data_list, ignore_index=True)
-    else:
-        current_cycle_data = pd.DataFrame()
-        print(f"\n⚠  WARNING: No valid pulses found in cycle {cycle_num}")
-        print(f"   This might be because:")
-        print(f"   • Rest periods are > {MAX_REST_DURATION}s (too long)")
-        print(f"   • Rest periods are = 0s (no rest between pulses)")
-        print(f"   • Cycle structure is unusual")
-        return None, [], []
-    
-    # Set current cycle
-    current_cycle = cycle_num
-    
+
     # Summary
     print(f"\n{'='*60}")
     print(f"PULSE ANALYSIS COMPLETE FOR CYCLE {cycle_num}")
@@ -316,219 +275,6 @@ def analyze_cycle_pulses(cycle_num):
         print(f"  └─ Pulse numbers: {discharge_pulse_nums}")
     print(f"✓ Total valid pulses: {len(charge_pulse_nums) + len(discharge_pulse_nums)}")
     print(f"{'='*60}\n")
-    
-    return current_cycle_data, charge_pulse_nums, discharge_pulse_nums
 
-# =============================================================================
-# PLOTTING FUNCTIONS
-# =============================================================================
-
-def plot_pulse(df, pulse_num, ax, color_v, title_prefix=""):
-    """Plot a specific pulse with styling matching Jupyter notebook"""
-    pulse_df = df[df['pulse_number'] == pulse_num]
-    ax.clear()
-    
-    if pulse_df.empty:
-        ax.text(0.5, 0.5, f"No data for pulse {pulse_num}", ha='center', va='center', transform=ax.transAxes)
-        ax.set_title(f"{title_prefix}Pulse {pulse_num} - No Data")
-        return None
-
-    # Main voltage plot
-    ax.plot(pulse_df['t/s'], pulse_df['E/V'], color=color_v, marker='o', markersize=2, label='Voltage (V)')
-    ax.set_xlabel('Absolute Time (s)')
-    ax.set_ylabel('Voltage (V)')
-    ax.grid(True, alpha=0.3)
-
-    # Relative time axis on top
-    pulse_start = pulse_df['t/s'].iloc[0]
-    relative_time = pulse_df['t/s'] - pulse_start
-    ax_top = ax.twiny()
-    ax_top.plot(relative_time, pulse_df['E/V'], alpha=0)
-    ax_top.set_xlabel('Relative Time (s)', color='darkblue')
-    ax_top.tick_params(axis='x', colors='darkblue')
-
-    # Current overlay on right axis
-    ax_curr = ax.twinx()
-    ax_curr.plot(pulse_df['t/s'], pulse_df['I/mA'], 'orange', marker='o', 
-                linestyle='--', markersize=2, label='Current (mA)', alpha=0.7)
-    ax_curr.set_ylabel('Current (mA)', color='orange')
-    ax_curr.tick_params(axis='y', colors='orange')
-
-    # V0 marker and rest shading
-    if 'V0' in pulse_df.columns and 't0' in pulse_df.columns and not pulse_df['V0'].isna().all():
-        V0 = pulse_df['V0'].iloc[0]
-        t0 = pulse_df['t0'].iloc[0]
-        # Rest period shading
-        ax.axvspan(t0, pulse_df['t/s'].iloc[-1], color=color_v, alpha=0.2, label='Rest Period')
-        # V0 marker
-        ax.plot(t0, V0, 'o', color='green', markersize=8, label=f'V0={V0:.3f}V', zorder=10)
-
-    ax.set_title(f"{title_prefix}Pulse {pulse_num}")
-    ax.legend(loc='upper left', fontsize=8)
-    
-    return pulse_df
-
-def plot_rest_period(pulse_df, ax, color_v):
-    """Plot rest period analysis"""
-    ax.clear()
-    
-    if pulse_df is None or pulse_df[pulse_df['I/mA'] == 0].empty:
-        ax.text(0.5, 0.5, 'No rest period', ha='center', va='center', transform=ax.transAxes)
-        ax.set_title('Rest Period - No Data')
-        return
-
-    rest_df = pulse_df[pulse_df['I/mA'] == 0]
-    if rest_df.empty:
-        ax.text(0.5, 0.5, 'No rest period', ha='center', va='center', transform=ax.transAxes)
-        ax.set_title('Rest Period - No Data')
-        return
-
-    # Rest period relative time
-    rest_start = rest_df['t/s'].iloc[0]
-    relative_time = rest_df['t/s'] - rest_start
-
-    # Plot rest voltage
-    ax.plot(rest_df['t/s'], rest_df['E/V'], color=color_v, marker='o', 
-           markersize=2, label='Rest Voltage')
-    
-    # Relative time axis on top
-    ax_top = ax.twiny()
-    ax_top.plot(relative_time, rest_df['E/V'], alpha=0)
-    ax_top.set_xlabel('Rest Time (s)', color='darkgreen')
-    ax_top.tick_params(axis='x', colors='darkgreen')
-
-    # V0 marker and shading
-    if 'V0' in pulse_df.columns and 't0' in pulse_df.columns and not pulse_df['V0'].isna().all():
-        V0 = pulse_df['V0'].iloc[0]
-        t0 = pulse_df['t0'].iloc[0]
-        ax.plot(t0, V0, 'o', color='green', markersize=8, label='V0', zorder=10)
-        ax.axvspan(t0, rest_df['t/s'].iloc[-1], color=color_v, alpha=0.2)
-
-    # Calculate voltage change during rest
-    if len(rest_df) > 1:
-        v_start = rest_df['E/V'].iloc[0]
-        v_end = rest_df['E/V'].iloc[-1]
-        delta_v = v_end - v_start
-        duration = rest_df['t/s'].iloc[-1] - rest_df['t/s'].iloc[0]
-        ax.set_title(f"Rest Period ({duration:.1f}s, ΔV={delta_v:.3f}V)")
-    else:
-        ax.set_title("Rest Period")
-
-    ax.set_xlabel('Absolute Time (s)')
-    ax.set_ylabel('Voltage (V)', color=color_v)
-    ax.tick_params(axis='y', colors=color_v)
-    ax.legend(fontsize=8)
-    ax.grid(True, alpha=0.3)
-
-def plot_cycle_pulse_overview(cycle_data, cycle_num):
-    """Plot overview of all pulses in a cycle"""
-    if cycle_data is None or len(cycle_data) == 0:
-        print("No cycle data to plot")
-        return
-    
-    print(f"Creating pulse overview plot for cycle {cycle_num}")
-    
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
-    
-    # Get unique pulses
-    unique_pulses = sorted([p for p in cycle_data['pulse_number'].unique() if p > 0])
-    colors = plt.cm.tab10(np.linspace(0, 1, len(unique_pulses)))
-    
-    # Plot 1: Voltage vs Time
-    for i, pulse_num in enumerate(unique_pulses):
-        pulse_data = cycle_data[cycle_data['pulse_number'] == pulse_num]
-        color = colors[i % len(colors)]
-        ax1.plot(pulse_data['t/s'], pulse_data['E/V'], 
-                color=color, label=f'Pulse {pulse_num}', linewidth=2, alpha=0.8)
-        
-        # Mark V0 points
-        if 'V0' in pulse_data.columns and 't0' in pulse_data.columns:
-            v0_data = pulse_data.dropna(subset=['V0', 't0'])
-            if not v0_data.empty:
-                ax1.scatter(v0_data['t0'].iloc[0], v0_data['V0'].iloc[0], 
-                          color=color, s=50, marker='s', edgecolor='black', zorder=10)
-    
-    ax1.set_xlabel('Time (s)')
-    ax1.set_ylabel('Voltage (V)')
-    ax1.set_title(f'Cycle {cycle_num} - Voltage vs Time (All Pulses)')
-    ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax1.grid(True, alpha=0.3)
-    
-    # Plot 2: Current vs Time with pulse type indication
-    for i, pulse_num in enumerate(unique_pulses):
-        pulse_data = cycle_data[cycle_data['pulse_number'] == pulse_num]
-        color = colors[i % len(colors)]
-        avg_current = pulse_data['I/mA'].mean()
-        
-        # Different line styles for charge vs discharge
-        linestyle = '-' if avg_current > 0 else '--'
-        alpha = 0.8
-            
-        ax2.plot(pulse_data['t/s'], pulse_data['I/mA'], 
-                color=color, label=f'Pulse {pulse_num}', 
-                linewidth=2, alpha=alpha, linestyle=linestyle)
-    
-    ax2.axhline(y=0, color='black', linestyle='-', alpha=0.5)
-    ax2.set_xlabel('Time (s)')
-    ax2.set_ylabel('Current (mA)')
-    ax2.set_title(f'Cycle {cycle_num} - Current vs Time (— = Charge, -- = Discharge)')
-    ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax2.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
-
-def plot_individual_pulse_detailed(pulse_num):
-    """Plot detailed view of charge and discharge pulses - 2x2 layout matching Jupyter"""
-    global charge_data_rest, discharge_data_rest, current_cycle
-    
-    print(f"DEBUG: current_cycle = {current_cycle}")
-    print(f"DEBUG: charge_data_rest is None: {charge_data_rest is None}")
-    print(f"DEBUG: discharge_data_rest is None: {discharge_data_rest is None}")
-    
-    if charge_data_rest is not None:
-        print(f"DEBUG: charge pulse numbers: {sorted(charge_data_rest['pulse_number'].unique())}")
-    if discharge_data_rest is not None:
-        print(f"DEBUG: discharge pulse numbers: {sorted(discharge_data_rest['pulse_number'].unique())}")
-    
-    # Create 2x2 layout: rest periods on top, full pulses below
-    fig, ((ax_charge_rest, ax_discharge_rest), (ax_charge_main, ax_discharge_main)) = plt.subplots(2, 2, figsize=(16, 10))
-    
-    # Plot charge pulse (left column)
-    if charge_data_rest is not None and pulse_num in charge_data_rest['pulse_number'].values:
-        charge_pulse = charge_data_rest[charge_data_rest['pulse_number'] == pulse_num]
-        
-        # Full pulse plot (bottom left)
-        plot_pulse(charge_data_rest, pulse_num, ax_charge_main, 'blue', "Charge ")
-        
-        # Rest period plot (top left)  
-        plot_rest_period(charge_pulse, ax_charge_rest, 'blue')
-        
-        print(f"DEBUG: Plotted charge pulse {pulse_num}")
-    else:
-        ax_charge_rest.text(0.5, 0.5, f'No charge pulse {pulse_num}', ha='center', va='center')
-        ax_charge_rest.set_title(f'Charge Pulse {pulse_num} - Rest Period')
-        ax_charge_main.text(0.5, 0.5, f'No charge pulse {pulse_num}', ha='center', va='center')
-        ax_charge_main.set_title(f'Charge Pulse {pulse_num} - No Data')
-        print(f"DEBUG: No charge pulse {pulse_num} found")
-    
-    # Plot discharge pulse (right column)  
-    if discharge_data_rest is not None and pulse_num in discharge_data_rest['pulse_number'].values:
-        discharge_pulse = discharge_data_rest[discharge_data_rest['pulse_number'] == pulse_num]
-        
-        # Full pulse plot (bottom right)
-        plot_pulse(discharge_data_rest, pulse_num, ax_discharge_main, 'red', "Discharge ")
-        
-        # Rest period plot (top right)
-        plot_rest_period(discharge_pulse, ax_discharge_rest, 'red')
-        
-        print(f"DEBUG: Plotted discharge pulse {pulse_num}")
-    else:
-        ax_discharge_rest.text(0.5, 0.5, f'No discharge pulse {pulse_num}', ha='center', va='center')
-        ax_discharge_rest.set_title(f'Discharge Pulse {pulse_num} - Rest Period')  
-        ax_discharge_main.text(0.5, 0.5, f'No discharge pulse {pulse_num}', ha='center', va='center')
-        ax_discharge_main.set_title(f'Discharge Pulse {pulse_num} - No Data')
-        print(f"DEBUG: No discharge pulse {pulse_num} found")
-    
-    plt.tight_layout()
-    plt.show()
+    return PulseAnalysis(cycle_num, charge_data_rest, charge_pulse_nums,
+                         discharge_data_rest, discharge_pulse_nums)

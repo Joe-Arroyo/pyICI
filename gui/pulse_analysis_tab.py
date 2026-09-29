@@ -402,22 +402,18 @@ class PulseTab:
                 self.update_status(f"No data for cycle {cycle_num}", error=True)
                 return
             
-            # CRITICAL: Sync data to pulse_analyzer module BEFORE calling analyze_cycle_pulses
+            # Run pulse analysis (analysis layer takes data in, returns results)
             from analysis import pulse_analyzer
-            pulse_analyzer.df_raw = df_raw
-            pulse_analyzer.cycle_list = self.shared_data.get('cycle_list', sorted(df_raw['cycle'].unique().tolist()))
+            result = pulse_analyzer.analyze_cycle_pulses(df_raw, cycle_num)
             
-            # Run pulse analysis
-            result_data, charge_pulses, discharge_pulses = pulse_analyzer.analyze_cycle_pulses(cycle_num)
-            
-            # Store results - GET FROM GLOBAL VARIABLES in pulse_analyzer module!
-            self.charge_data_rest = pulse_analyzer.charge_data_rest
-            self.discharge_data_rest = pulse_analyzer.discharge_data_rest
-            self.charge_pulse_nums = charge_pulses
-            self.discharge_pulse_nums = discharge_pulses
+            # Store results
+            self.charge_data_rest = result.charge_data
+            self.discharge_data_rest = result.discharge_data
+            self.charge_pulse_nums = result.charge_pulses
+            self.discharge_pulse_nums = result.discharge_pulses
             
             # Update pulse spinbox range
-            all_pulse_nums = sorted(set(charge_pulses + discharge_pulses))
+            all_pulse_nums = sorted(set(self.charge_pulse_nums + self.discharge_pulse_nums))
             if all_pulse_nums:
                 self.pulse_spinbox.config(from_=min(all_pulse_nums), to=max(all_pulse_nums))
             
@@ -435,7 +431,7 @@ class PulseTab:
             self.canvas.draw_idle()
             self.parent.update_idletasks()
             
-            self.update_status(f"Analyzed cycle {cycle_num}: {len(charge_pulses)} charge + {len(discharge_pulses)} discharge pulses")
+            self.update_status(f"Analyzed cycle {cycle_num}: {len(self.charge_pulse_nums)} charge + {len(self.discharge_pulse_nums)} discharge pulses")
             
         except Exception as e:
             self.update_status(f"Analysis error: {str(e)}", error=True)
