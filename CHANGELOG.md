@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer holds analysis data in module-level globals. `load_cycle_for_regression`
   now takes the data as arguments and returns a result object, so the regression
   analysis can be run and tested independently of the GUI.
+- Internal refactor (no change to application behaviour): `kinetic_analyzer` no
+  longer holds analysis data in module-level globals. `compute_R_k_for_cycle`,
+  `compute_R_k_for_cycles`, and `export_R_k_results` now take the data as an
+  argument, so R / k extraction can be run and tested independently of the GUI.
 
 ### Removed
 - Internal cleanup: removed leftover Jupyter/CLI code from the `analysis` modules
