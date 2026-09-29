@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   can be run and tested independently of the GUI. Removed dead notebook-era
   plotting helpers (`plot_pulse`, `plot_rest_period`, `plot_cycle_pulse_overview`,
   `plot_individual_pulse_detailed`) that the GUI never called.
+- Internal refactor (no change to application behaviour): `data_loader` no longer
+  holds analysis data in module-level globals. `run_data_analysis` now takes its
+  parameters as arguments and returns a result object (df_raw, plot_data,
+  ici_starts, cycle_list, data_format) instead of setting module globals. Removed
+  dead notebook/console helpers (`select_data_file`, `get_analysis_parameters`,
+  `list_available_files`, `console_cycle_explorer`) and standalone plotting helpers
+  (`create_overview_plot`, `plot_cycle`). This completes the de-globalization of
+  the analysis core — every analysis module is now usable and testable without the GUI.
 
 ### Removed
 - Internal cleanup: removed leftover Jupyter/CLI code from the `analysis` modules
