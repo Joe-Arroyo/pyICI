@@ -5,6 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
+![tests](https://github.com/Joe-Arroyo/pyICI/actions/workflows/tests.yml/badge.svg)
+
 ## Overview
 
 Intermittent current interruption (ICI) is an electrochemical technique used for the diagnostic analysis of battery systems. It involves introducing brief interruptions or pauses (1–10 seconds) into a constant current charge–discharge cycle and analyzing the voltage response during each interruption. The technique characterizes cell resistance using two parameters: the internal resistance (*R*, Ω), which captures Ohmic contributions, and the diffusion resistance coefficient (*k*, Ω s<sup>−1/2</sup>), which captures solid-state mass transport effects. Because ICI assumes a diffusion-controlled system, cycling must be performed at a comparatively slow rate of C/5 or lower. 
