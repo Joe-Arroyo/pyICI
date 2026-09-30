@@ -63,3 +63,12 @@ def test_compute_R_k_known_values():
     assert k_vals[0] == pytest.approx(10.0, rel=1e-9)
     assert R_errs[0] == pytest.approx(0.0, abs=1e-12)
     assert k_errs[0] == pytest.approx(0.0, abs=1e-12)
+
+def test_two_point_window_returns_nan():
+    # A 2-point window would divide by zero in s2 = Σr²/(n-2); must return NaN,
+    # not inf/nan error bars.
+    rest = pd.DataFrame({'t/s': [0.0, 1.0], 'ΔV': [0.0, -0.01]})
+    result = compute_single_pulse_regression(rest, r1_start=0, r1_length=2)
+    assert np.isnan(result['r2'])
+    assert np.isnan(result['slope'])
+    assert result['cov'] is None

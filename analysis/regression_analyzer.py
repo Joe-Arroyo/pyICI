@@ -158,7 +158,14 @@ def compute_single_pulse_regression(rest_data, r1_start, r1_length):
         # Select regression window
         X = times[r1_start:r1_start + r1_length].reshape(-1, 1)
         y = voltages[r1_start:r1_start + r1_length]
-        
+
+        # Need >= 3 points for a meaningful fit: s2 = Σr²/(n-2) divides by zero
+        # at n=2, and a degenerate (zero-variance) x-window blows up the slope /
+        # covariance. Either way the fit and its error bars are meaningless, so
+        # return NaN rather than inf/nan.
+        if len(y) < 3 or np.ptp(X) == 0:
+            return {'r2': np.nan, 'slope': np.nan, 'intercept': np.nan, 'cov': None}
+
         # Linear regression
         X_mean = np.mean(X)
         y_mean = np.mean(y)
