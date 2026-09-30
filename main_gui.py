@@ -399,9 +399,9 @@ def main():
 
         # Start maximized (cross-platform)
     try:
-        root.state('zoomed')        # Windows
-    except:
-        root.attributes('-zoomed', True)  # Linux
+        root.state('zoomed')                  # Windows
+    except tk.TclError:
+        root.attributes('-zoomed', True)      # Linux/macOS
     
     # Force window to fully render before mainloop
     root.update_idletasks()

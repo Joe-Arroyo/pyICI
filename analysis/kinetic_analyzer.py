@@ -322,5 +322,5 @@ def parse_cycle_input(input_str, available_cycles):
         valid_cycles = [c for c in cycles if c in available_cycles]
         return sorted(list(set(valid_cycles)))
         
-    except Exception as e:
+    except Exception:
         return []
