@@ -7,8 +7,6 @@ R & k Parameter Extraction with Error Propagation
 import numpy as np
 import pandas as pd
 import os
-import warnings
-warnings.filterwarnings('ignore')
 
 from analysis.regression_analyzer import (
     classify_charge_discharge,

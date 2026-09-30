@@ -15,8 +15,6 @@ This module includes classify_charge_discharge() to ensure proper pulse separati
 import numpy as np
 import pandas as pd
 from collections import namedtuple
-import warnings
-warnings.filterwarnings('ignore')
 
 # =============================================================================
 # CONFIGURATION
