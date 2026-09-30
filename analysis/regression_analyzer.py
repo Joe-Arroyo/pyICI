@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ICI Battery Analysis - Regression Analyzer Module (Version 28 COMPLETE)
+ICI Battery Analysis - Regression Analyzer Module 
 R² Regression Analysis with Phase Classification
 Converted from cell4_regression.py
 
@@ -14,8 +14,6 @@ This module includes classify_charge_discharge() to ensure proper pulse separati
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import os
 from collections import namedtuple
 import warnings
 warnings.filterwarnings('ignore')
@@ -193,8 +191,7 @@ def compute_single_pulse_regression(rest_data, r1_start, r1_length):
             'cov': cov_matrix
         }
         
-    except Exception as e:
-        print(f"Error in regression: {e}")
+    except Exception:
         return {'r2': np.nan, 'slope': np.nan, 'intercept': np.nan, 'cov': None}
 
 def compute_r2_for_pulse(data, pulse_num, r1_start, r1_length):
@@ -300,81 +297,6 @@ def load_cycle_for_regression(df_raw, cycle_num):
         discharge_data=discharge_data,
         discharge_pulses=discharge_pulses,
     )
-
-# =============================================================================
-# VISUALIZATION FUNCTIONS
-# =============================================================================
-
-def plot_pulse_r2_analysis(cycle_data, pulse_num, r1s, r1l, phase=""):
-    """Plot detailed R² analysis for a single pulse"""
-    pulse_data = cycle_data[cycle_data['pulse_number'] == pulse_num]
-    
-    if len(pulse_data) == 0:
-        print(f"❌ No data for pulse {pulse_num}")
-        return
-    
-    rest_data = pulse_data[pulse_data['I/mA'] == 0].copy()
-    
-    if len(rest_data) == 0:
-        print(f"❌ No rest data for pulse {pulse_num}")
-        return
-    
-    rest_data = rest_data.reset_index(drop=True)
-    
-    # Get V0 and compute ΔV
-    V0 = get_V0(cycle_data, pulse_num)
-    rest_data['ΔV'] = rest_data['E/V'] - V0
-    
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-    
-    # Plot 1: Full pulse view
-    ax1.plot(pulse_data['t/s'], pulse_data['E/V'], 'b-', linewidth=2, label='Full Pulse')
-    ax1.plot(rest_data['t/s'], rest_data['E/V'], 'ro', markersize=4, label='Rest Period')
-    
-    # Highlight regression windows
-    if len(rest_data) >= r1s:
-        ax1.plot(rest_data['t/s'][:r1s], rest_data['E/V'][:r1s], 'go', 
-                markersize=6, label=f'Short Reg. (r1s={r1s})')
-    
-    if len(rest_data) >= r1l:
-        ax1.plot(rest_data['t/s'][:r1l], rest_data['E/V'][:r1l], 'mo', 
-                markersize=4, label=f'Long Reg. (r1l={r1l})', alpha=0.7)
-    
-    ax1.set_xlabel('Time (s)')
-    ax1.set_ylabel('Voltage (V)')
-    ax1.set_title(f'{phase} Pulse {pulse_num} - Full View')
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
-    
-    # Plot 2: Regression analysis with sqrt(time)
-    times_sqrt = np.sqrt(rest_data['t/s'].values - rest_data['t/s'].values[0])
-    
-    ax2.plot(times_sqrt, rest_data['ΔV'].values, 'ro-', markersize=4, label='ΔV vs √t')
-    
-    # Compute and plot regression
-    regression_result = compute_single_pulse_regression(rest_data, r1s, r1l)
-    
-    if not np.isnan(regression_result['r2']) and len(rest_data) >= r1s + r1l:
-        X_fit = times_sqrt[r1s:r1s + r1l]
-        y_fit = regression_result['slope'] * X_fit + regression_result['intercept']
-        ax2.plot(X_fit, y_fit, 'g-', linewidth=2, 
-                label=f'Regression: R²={regression_result["r2"]:.3f}')
-    
-    ax2.set_xlabel('√Time (√s)')
-    ax2.set_ylabel('ΔV (V)')
-    ax2.set_title(f'{phase} Pulse {pulse_num} - R² Analysis')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
-    
-    # Print results
-    print(f"\n📊 R² Analysis Results for {phase} Pulse {pulse_num}:")
-    print(f"   • R² = {regression_result['r2']:.4f}")
-    print(f"   • Slope = {regression_result['slope']:.4f}")
-    print(f"   • V0 = {V0:.3f} V")
-    print(f"   • Rest data points: {len(rest_data)}")
 
 # =============================================================================
 # UTILITY FUNCTIONS
