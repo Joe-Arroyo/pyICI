@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Regression on a rest-period window with fewer than 3 points (or with zero √t
+  spread) now returns NaN instead of silently producing `inf`/`nan` error bars on
+  R and k. The residual variance `s2 = Σr²/(n−2)` divided by zero at n = 2; the fit
+  is now guarded so degenerate windows can't yield meaningless error bars.
+
 ## [1.3.0] - 2026-09-29
 
 ### Added
