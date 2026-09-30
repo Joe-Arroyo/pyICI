@@ -261,51 +261,43 @@ def compute_R_k_for_cycles(df_raw, cycle_nums, phase, r1s=DEFAULT_R1S, r1l=DEFAU
 
 def export_R_k_results(df_raw, cycle_nums, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, output_folder="exports", filename_prefix="", mass_mg=0):
     if df_raw is None:
-        print("❌ No data loaded")
         return False
-    
-    try:
-        os.makedirs(output_folder, exist_ok=True)
-        exported_files = []
 
-        # Create prefix for filename (add underscore if prefix exists)
-        prefix = f"{filename_prefix}_" if filename_prefix else ""
+    os.makedirs(output_folder, exist_ok=True)
+    exported_files = []
 
-        
-        for phase in ['charge', 'discharge']:
-            all_data = []
-            
-            for cycle_num in cycle_nums:
-                result = compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s, r1l, saved_params, mass_mg)
+    # Create prefix for filename (add underscore if prefix exists)
+    prefix = f"{filename_prefix}_" if filename_prefix else ""
 
-                if result:
-                    for i in range(len(result['voltages'])):
-                        all_data.append({
-                            'Cycle': cycle_num,
-                            'Pulse_Number': result['pulse_nums'][i],
-                            'Voltage (V)': result['voltages'][i],
-                            'Capacity (mAh)': result['capacity'][i],
-                            'Specific_Capacity (mAh/g)': result['specific_capacity'][i],
-                            'R (Ohm)': result['R'][i],
-                            'R_err (Ohm)': result['R_err'][i],
-                            'k (Ohm·s^0.5)': result['k'][i],
-                            'k_err (Ohm·s^0.5)': result['k_err'][i],
-                            'R2': result['r2'][i]
-                        })
-            
-            if all_data:
-                df_export = pd.DataFrame(all_data)
-                filename = f'{prefix}R_k_results_{phase}.csv'
-                output_path = os.path.join(output_folder, filename)
-                df_export.to_csv(output_path, index=False)
-                exported_files.append(filename)
-                print(f"✅ Exported {len(all_data)} {phase} results to: {output_path}")
-        
-        return len(exported_files) > 0
-        
-    except Exception as e:
-        print(f"❌ Export error: {e}")
-        return False
+    for phase in ['charge', 'discharge']:
+        all_data = []
+
+        for cycle_num in cycle_nums:
+            result = compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s, r1l, saved_params, mass_mg)
+
+            if result:
+                for i in range(len(result['voltages'])):
+                    all_data.append({
+                        'Cycle': cycle_num,
+                        'Pulse_Number': result['pulse_nums'][i],
+                        'Voltage (V)': result['voltages'][i],
+                        'Capacity (mAh)': result['capacity'][i],
+                        'Specific_Capacity (mAh/g)': result['specific_capacity'][i],
+                        'R (Ohm)': result['R'][i],
+                        'R_err (Ohm)': result['R_err'][i],
+                        'k (Ohm·s^0.5)': result['k'][i],
+                        'k_err (Ohm·s^0.5)': result['k_err'][i],
+                        'R2': result['r2'][i]
+                    })
+
+        if all_data:
+            df_export = pd.DataFrame(all_data)
+            filename = f'{prefix}R_k_results_{phase}.csv'
+            output_path = os.path.join(output_folder, filename)
+            df_export.to_csv(output_path, index=False)
+            exported_files.append(filename)
+
+    return len(exported_files) > 0
 
 def parse_cycle_input(input_str, available_cycles):
     if not input_str.strip():
@@ -333,5 +325,4 @@ def parse_cycle_input(input_str, available_cycles):
         return sorted(list(set(valid_cycles)))
         
     except Exception as e:
-        print(f"❌ Error parsing cycles: {e}")
         return []
