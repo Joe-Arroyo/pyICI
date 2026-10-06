@@ -85,6 +85,28 @@ def match_capacity_to_time(t0_values, capacity_curve):
     return capacity_mAh, specific_capacity
 
 def get_pre_pulse_currents(data, pulse_numbers):
+    """Return each pulse's pre-interruption current (in amps) and voltage.
+
+    For every pulse, finds the first rest sample (``I/mA == 0``) and reads the
+    immediately preceding active sample — the last point before the current was
+    interrupted.
+
+    Parameters
+    ----------
+    data : pandas.DataFrame
+        Pulse-labelled phase data with a ``pulse_number`` column plus ``t/s``,
+        ``E/V`` and ``I/mA``.
+    pulse_numbers : iterable of int
+        Pulses to evaluate, in the desired output order.
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        ``(currents, voltages)`` aligned with ``pulse_numbers``. ``currents`` is
+        in **amps** (mA / 1000 — the value used downstream for R and k);
+        ``voltages`` in volts. A pulse with no rest data, or none preceding it,
+        yields ``nan`` in both arrays.
+    """
     currents = []
     voltages = []
     
@@ -115,6 +137,30 @@ def get_pre_pulse_currents(data, pulse_numbers):
     return np.array(currents), np.array(voltages)
 
 def compute_regression_with_covariance(data, pulse_num, r1s, r1l):
+    """Fit ΔV vs. √t for a single pulse's rest period, with covariance.
+
+    Builds the relaxation curve for one pulse — ΔV = E − V0 against
+    √(t − t0) over the rest samples — and fits a straight line over the window
+    ``[r1s : r1s + r1l]`` (sample indices into the rest period).
+
+    Parameters
+    ----------
+    data : pandas.DataFrame
+        Pulse-labelled phase data.
+    pulse_num : int
+        Pulse to fit.
+    r1s, r1l : int
+        Regression window start offset and length, as sample indices into this
+        pulse's rest period.
+
+    Returns
+    -------
+    dict
+        Keys ``'pulse'``, ``'r2'``, ``'slope'``, ``'intercept'``, ``'cov'``,
+        ``'V0'``. ``'cov'`` is the 2×2 covariance matrix of (slope, intercept),
+        or ``None``. Degenerate cases — an empty or too-short rest window, or an
+        undefined V0 — return ``nan`` numeric fields.
+    """
     pulse_data = data[data['pulse_number'] == pulse_num]
     rest_data = pulse_data[pulse_data['I/mA'] == 0].copy()
 
@@ -140,6 +186,31 @@ def compute_regression_with_covariance(data, pulse_num, r1s, r1l):
     return result
 
 def compute_R_k(data, pulse_numbers, regression_results):
+    """Convert per-pulse regression fits into R and k with error propagation.
+
+    Applies ``R = -intercept / I`` and ``k = -slope / I`` (I = the pre-pulse
+    current in amps) for each pulse, and propagates the fit's covariance into
+    1σ errors: R's error from the intercept variance, k's from the slope
+    variance (the off-diagonal term is not used, since R depends only on the
+    intercept and k only on the slope).
+
+    Parameters
+    ----------
+    data : pandas.DataFrame
+        Pulse-labelled phase data (used to look up each pulse's pre-pulse
+        current via :func:`get_pre_pulse_currents`).
+    pulse_numbers : iterable of int
+        Pulses, in the same order as ``regression_results``.
+    regression_results : list of dict
+        Per-pulse fit dicts from :func:`compute_regression_with_covariance`.
+
+    Returns
+    -------
+    tuple
+        ``(voltages, (R_vals, R_errs), (k_vals, k_errs))`` as numpy arrays
+        aligned with ``pulse_numbers``. R is in Ω, k in Ω·s^-1/2. A pulse with
+        zero/nan current, or a nan fit, yields ``nan`` for R, k and their errors.
+    """
     currents, voltages = get_pre_pulse_currents(data, pulse_numbers)
     
     R_vals = []
@@ -180,6 +251,53 @@ def compute_R_k(data, pulse_numbers, regression_results):
     return voltages, (np.array(R_vals), np.array(R_errs)), (np.array(k_vals), np.array(k_errs))
 
 def compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, mass_mg=0):
+    """Extract internal resistance R and diffusion coefficient k for one half-cycle.
+
+    Runs the full ICI pipeline on a single cycle/phase: classifies the phase,
+    assigns valid current-interruption pulses, computes each pulse's baseline
+    (V0, t0), fits ΔV vs. √t over the chosen rest-period window, and converts
+    the fit to R and k with covariance-based error propagation.
+
+    Parameters
+    ----------
+    df_raw : pandas.DataFrame
+        Standardized data with columns ``cycle``, ``t/s``, ``E/V``, ``I/mA``
+        (as returned by :func:`analysis.data_loader.run_data_analysis`).
+    cycle_num : int
+        Cycle number to analyze.
+    phase : {'charge', 'discharge'}
+        Which half-cycle to analyze.
+    r1s, r1l : int, optional
+        Regression window as sample indices into each pulse's rest period:
+        start offset ``r1s`` and length ``r1l`` (defaults 2 and 10). Ignored for
+        a pulse whose window is overridden in ``saved_params``.
+    saved_params : dict, optional
+        Per-pulse window overrides keyed by ``"{cycle}_{phase}_{pulse}"``, each
+        mapping to ``{'r1s': int, 'r1l': int}`` (the GUI's hand-tuned fits).
+    mass_mg : float, optional
+        Active-material mass in mg, used only for the specific-capacity axis.
+        ``0`` (default) leaves specific capacity unscaled.
+
+    Returns
+    -------
+    dict or None
+        ``None`` if the cycle/phase has no data or no valid pulses. Otherwise a
+        dict of equal-length arrays, one entry per analyzed pulse:
+
+        - ``'voltages'`` : baseline voltage V0 of each pulse (V)
+        - ``'R'``, ``'R_err'`` : resistance and its 1σ error (Ω)
+        - ``'k'``, ``'k_err'`` : diffusion coefficient and its 1σ error (Ω·s^-1/2)
+        - ``'pulse_nums'`` : the pulse numbers analyzed
+        - ``'r2'`` : R² of each ΔV-vs-√t fit
+        - ``'capacity'``, ``'specific_capacity'`` : capacity (mAh) and, when
+          ``mass_mg`` > 0, specific capacity (mAh/g) at each pulse
+
+    Notes
+    -----
+    R = -intercept / I and k = -slope / I, with I in amps (mA / 1000). A pulse
+    whose rest window has fewer than 3 points yields ``nan`` rather than a
+    degenerate fit.
+    """
     if df_raw is None:
         return None
     
@@ -247,6 +365,25 @@ def compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT
     }
 
 def compute_R_k_for_cycles(df_raw, cycle_nums, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, mass_mg=0):
+    """Run :func:`compute_R_k_for_cycle` over several cycles.
+
+    Parameters
+    ----------
+    df_raw : pandas.DataFrame
+        Standardized data (see :func:`compute_R_k_for_cycle`).
+    cycle_nums : iterable of int
+        Cycles to analyze.
+    phase : {'charge', 'discharge'}
+        Half-cycle to analyze.
+    r1s, r1l, saved_params, mass_mg
+        Passed through unchanged to :func:`compute_R_k_for_cycle`.
+
+    Returns
+    -------
+    list of dict
+        One result dict per cycle that produced data, each with an added
+        ``'cycle'`` key. Cycles with no valid pulses are skipped.
+    """
     results = []
 
     for cycle_num in cycle_nums:
@@ -258,6 +395,32 @@ def compute_R_k_for_cycles(df_raw, cycle_nums, phase, r1s=DEFAULT_R1S, r1l=DEFAU
     return results
 
 def export_R_k_results(df_raw, cycle_nums, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, output_folder="exports", filename_prefix="", mass_mg=0):
+    """Compute R/k for the given cycles and write one CSV per phase.
+
+    Runs the full R/k pipeline for every cycle in both phases and writes
+    ``{prefix}R_k_results_charge.csv`` and ``..._discharge.csv`` into
+    ``output_folder`` (created if needed). Each row is one pulse, with cycle,
+    pulse number, voltage, capacity, specific capacity, R, R_err, k, k_err and R².
+
+    Parameters
+    ----------
+    df_raw : pandas.DataFrame
+        Standardized data.
+    cycle_nums : iterable of int
+        Cycles to export.
+    r1s, r1l, saved_params, mass_mg
+        Passed through unchanged to :func:`compute_R_k_for_cycle`.
+    output_folder : str, optional
+        Destination directory (default ``"exports"``).
+    filename_prefix : str, optional
+        Optional prefix prepended to each output filename.
+
+    Returns
+    -------
+    bool
+        ``True`` if at least one CSV was written, ``False`` otherwise (e.g. no
+        data, or ``df_raw`` is ``None``).
+    """
     if df_raw is None:
         return False
 
@@ -298,6 +461,25 @@ def export_R_k_results(df_raw, cycle_nums, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, sav
     return len(exported_files) > 0
 
 def parse_cycle_input(input_str, available_cycles):
+    """Parse a cycle-selection string into a sorted list of valid cycle numbers.
+
+    Accepts comma-separated values and inclusive ranges — e.g. ``"1,3,5"`` or
+    ``"2-6"``, or a mix. Whitespace is ignored. Cycles not present in
+    ``available_cycles`` are dropped.
+
+    Parameters
+    ----------
+    input_str : str
+        User selection string.
+    available_cycles : iterable of int
+        Cycles that actually exist in the data.
+
+    Returns
+    -------
+    list of int
+        Sorted, de-duplicated valid cycles; an empty list for blank or
+        unparseable input.
+    """
     if not input_str.strip():
         return []
     
