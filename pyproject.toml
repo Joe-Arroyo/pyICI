@@ -32,6 +32,12 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/Joe-Arroyo/pyICI"
 Repository = "https://github.com/Joe-Arroyo/pyICI"
@@ -42,3 +48,9 @@ pyici = "main_gui:main"
 [tool.setuptools]
 packages = ["analysis", "gui"]
 py-modules = ["main_gui"]
+
+[tool.coverage.run]
+source = ["analysis"]
+
+[tool.coverage.report]
+show_missing = true
