@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Automated tests that run the complete analysis on the example files in `data/`
+  and check that the computed R and k values stay the same, so any change that
+  accidentally alters the results is caught automatically (locally and in CI).
+  These complement the existing tests that verify the math on simple,
+  hand-checkable inputs.
+
 ### Fixed
 - Regression on a rest-period window with fewer than 3 points (or with zero √t
   spread) now returns NaN instead of silently producing `inf`/`nan` error bars on
