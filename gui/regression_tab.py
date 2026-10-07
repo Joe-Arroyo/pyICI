@@ -94,9 +94,19 @@ class RegressionTab:
                        command=self.refresh_plots).pack(side=tk.LEFT, padx=20)
 
         self.show_time_axis_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(control_frame, text="Show time axis on top", 
+        ttk.Checkbutton(control_frame, text="Show time axis on top",
                variable=self.show_time_axis_var,
                command=self.refresh_plots).pack(side=tk.LEFT, padx=5)
+
+        # F11: regression-window mode. Unchecked = index (1-based points, default
+        # 2-10); checked = time (seconds, default 0.1-1.0). The math always works
+        # in indices; this just chooses how the Start/End boxes are read.
+        self.use_time_window_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(control_frame, text="Use time window for regression",
+               variable=self.use_time_window_var,
+               command=self._on_window_mode_toggle).pack(side=tk.LEFT, padx=5)
+        # publish the default mode so the Kinetics export resolves the same window
+        self.shared_data['regression_window'] = {'mode': 'index', 'start': None, 'end': None}
 
         # Notebook with two tabs
         self.notebook = ttk.Notebook(self.parent)
@@ -189,59 +199,78 @@ class RegressionTab:
         start_frame = ttk.Frame(ctrl_frame)
         start_frame.pack(fill=tk.X, pady=2)
         
-        ttk.Label(start_frame, text="Start (s):").pack(side=tk.LEFT, padx=2)
+        # Default mode is index (1-based points), so the boxes start at 2-10 and
+        # are integer-stepped. _on_window_mode_toggle() switches them to seconds.
+        _start_lbl = ttk.Label(start_frame, text="Start (pt):")
+        _start_lbl.pack(side=tk.LEFT, padx=2)
 
         if phase == "charge":
-            self.start_time_charge_var = tk.DoubleVar(value=0.1)
+            self.start_label_charge = _start_lbl
+            self.start_time_charge_var = tk.DoubleVar(value=2)
             self.start_time_charge_spinbox = ttk.Spinbox(
-                start_frame, 
-                from_=0.0, 
+                start_frame,
+                from_=0.0,
                 to=100.0,  # Initial max, will be updated dynamically
-                increment=0.1,
-                textvariable=self.start_time_charge_var, 
-                width=8, 
-                format="%.2f"
+                increment=1,
+                textvariable=self.start_time_charge_var,
+                width=8,
+                format="%.0f"
             )
             self.start_time_charge_spinbox.pack(side=tk.LEFT, padx=2)
         else:
-            self.start_time_discharge_var = tk.DoubleVar(value=0.1)
+            self.start_label_discharge = _start_lbl
+            self.start_time_discharge_var = tk.DoubleVar(value=2)
             self.start_time_discharge_spinbox = ttk.Spinbox(
-                start_frame, 
-                from_=0.0, 
+                start_frame,
+                from_=0.0,
                 to=100.0,
-                increment=0.1,
-                textvariable=self.start_time_discharge_var, 
-                width=8, 
-                format="%.2f"
+                increment=1,
+                textvariable=self.start_time_discharge_var,
+                width=8,
+                format="%.0f"
             )
             self.start_time_discharge_spinbox.pack(side=tk.LEFT, padx=2)
 
-        ttk.Label(start_frame, text="End (s):").pack(side=tk.LEFT, padx=(10,2))
+        _end_lbl = ttk.Label(start_frame, text="End (pt):")
+        _end_lbl.pack(side=tk.LEFT, padx=(10,2))
 
         if phase == "charge":
-            self.end_time_charge_var = tk.DoubleVar(value=1.0)
+            self.end_label_charge = _end_lbl
+            self.end_time_charge_var = tk.DoubleVar(value=10)
             self.end_time_charge_spinbox = ttk.Spinbox(
-                start_frame, 
-                from_=0.0, 
+                start_frame,
+                from_=0.0,
                 to=100.0,  # Initial max, will be updated dynamically
-                increment=0.1,
-                textvariable=self.end_time_charge_var, 
-                width=8, 
-                format="%.2f"
+                increment=1,
+                textvariable=self.end_time_charge_var,
+                width=8,
+                format="%.0f"
             )
             self.end_time_charge_spinbox.pack(side=tk.LEFT, padx=2)
         else:
-            self.end_time_discharge_var = tk.DoubleVar(value=1.0)
+            self.end_label_discharge = _end_lbl
+            self.end_time_discharge_var = tk.DoubleVar(value=10)
             self.end_time_discharge_spinbox = ttk.Spinbox(
-                start_frame, 
-                from_=0.0, 
+                start_frame,
+                from_=0.0,
                 to=100.0,
-                increment=0.1,
-                textvariable=self.end_time_discharge_var, 
-                width=8, 
-                format="%.2f"
+                increment=1,
+                textvariable=self.end_time_discharge_var,
+                width=8,
+                format="%.0f"
             )
             self.end_time_discharge_spinbox.pack(side=tk.LEFT, padx=2)
+
+        # F11: live update — redraw (and re-shade) as the window changes, via the
+        # spinbox arrows (command) and typed values (Return / focus-out).
+        if phase == "charge":
+            _win_spinboxes = (self.start_time_charge_spinbox, self.end_time_charge_spinbox)
+        else:
+            _win_spinboxes = (self.start_time_discharge_spinbox, self.end_time_discharge_spinbox)
+        for _sb in _win_spinboxes:
+            _sb.config(command=lambda p=phase: self.update_pulse_plot(p))
+            _sb.bind('<Return>', lambda e, p=phase: self.update_pulse_plot(p))
+            _sb.bind('<FocusOut>', lambda e, p=phase: self.update_pulse_plot(p))
 
         # Create side-by-side layout: Controls (left) | Export (right)
         controls_export_frame = ttk.Frame(ctrl_frame)
@@ -610,8 +639,12 @@ class RegressionTab:
         return duration
 
     def update_time_limits(self, phase):
-        """Update spinbox limits based on current pulse's rest duration"""
-        
+        """Update spinbox upper limits based on the current pulse's rest period.
+
+        In time mode the limit is the rest duration (s); in index mode it is the
+        number of rest points. Clamping uses the matching unit so an index window
+        is never clobbered with a seconds value.
+        """
         if phase == "charge":
             if len(self.charge_pulse_nums) == 0:
                 return
@@ -626,26 +659,31 @@ class RegressionTab:
             pulse_data = self.discharge_data_pulse
             spinbox_start = self.start_time_discharge_spinbox
             spinbox_end = self.end_time_discharge_spinbox
-        
-        # Get actual rest duration
+
+        sv, ev = self._win_vars(phase)
+
+        if self._reg_mode() != 'time':
+            # index mode: cap at the number of rest points; no seconds clamp
+            rest = pulse_data[pulse_data['pulse_number'] == pulse_num]
+            n_pts = int((rest['I/mA'] == 0).sum())
+            if n_pts > 0:
+                spinbox_start.config(to=n_pts)
+                spinbox_end.config(to=n_pts)
+                if ev.get() > n_pts:
+                    ev.set(n_pts)
+                if sv.get() > n_pts:
+                    sv.set(max(1, n_pts - 1))
+            return
+
+        # time mode: limit to the rest duration in seconds
         max_time = self.get_rest_duration(pulse_data, pulse_num)
-        
         if max_time > 0:
-            # Update spinbox limits dynamically
             spinbox_start.config(to=max_time)
             spinbox_end.config(to=max_time)
-            
-            # Clamp current values if they exceed new limit
-            if phase == "charge":
-                if self.start_time_charge_var.get() > max_time:
-                    self.start_time_charge_var.set(min(0.1, max_time * 0.1))
-                if self.end_time_charge_var.get() > max_time:
-                    self.end_time_charge_var.set(max_time * 0.9)
-            else:
-                if self.start_time_discharge_var.get() > max_time:
-                    self.start_time_discharge_var.set(min(0.1, max_time * 0.1))
-                if self.end_time_discharge_var.get() > max_time:
-                    self.end_time_discharge_var.set(max_time * 0.9)
+            if sv.get() > max_time:
+                sv.set(min(0.1, max_time * 0.1))
+            if ev.get() > max_time:
+                ev.set(max_time * 0.9)
 
     def time_to_indices(self, rest_data, start_time, end_time):
         """Convert time window to point indices with validation"""
@@ -668,8 +706,112 @@ class RegressionTab:
         
         r1s = start_idx
         r1l = max(2, end_idx - start_idx)  # Minimum 2 points for regression
-        
+
         return r1s, r1l
+
+    # ---------------------------------------------------------------------
+    # F11 regression-window helpers (time/index), all routed through the one
+    # analysis-layer resolver so the tab and the batch export agree.
+    # ---------------------------------------------------------------------
+    def _reg_mode(self):
+        return 'time' if self.use_time_window_var.get() else 'index'
+
+    def _reg_default_bounds(self):
+        if self._reg_mode() == 'time':
+            return ra.DEFAULT_TIME_START, ra.DEFAULT_TIME_END
+        return ra.DEFAULT_INDEX_START, ra.DEFAULT_INDEX_END
+
+    def _win_vars(self, phase):
+        if phase == "charge":
+            return self.start_time_charge_var, self.end_time_charge_var
+        return self.start_time_discharge_var, self.end_time_discharge_var
+
+    def _resolve_current(self, rest_data, phase):
+        """(r1s, r1l) from the current Start/End boxes in the current mode."""
+        sv, ev = self._win_vars(phase)
+        return ra.resolve_window(rest_data, self._reg_mode(), sv.get(), ev.get())
+
+    def _resolve_saved(self, rest_data, params):
+        """(r1s, r1l) from a saved per-pulse window (new {mode,start,end},
+        legacy {start_time,end_time}, or legacy {r1s,r1l})."""
+        if 'mode' in params:
+            return ra.resolve_window(rest_data, params['mode'],
+                                     params.get('start'), params.get('end'))
+        if 'start_time' in params:
+            return ra.resolve_window(rest_data, 'time',
+                                     params['start_time'], params['end_time'])
+        return params.get('r1s', 0), params.get('r1l', 0)
+
+    def _resolve_default(self, rest_data):
+        s, e = self._reg_default_bounds()
+        return ra.resolve_window(rest_data, self._reg_mode(), s, e)
+
+    def _restore_window_vars(self, phase, key):
+        """Set the phase's Start/End boxes from a saved param whose mode matches
+        the current mode, else to the current mode's default bounds."""
+        sv, ev = self._win_vars(phase)
+        s, e = self._reg_default_bounds()
+        params = self.shared_data.get('regression_params', {}).get(key)
+        if params:
+            if params.get('mode') == self._reg_mode():
+                s, e = params['start'], params['end']
+            elif ('start_time' in params) and self._reg_mode() == 'time':
+                s, e = params['start_time'], params['end_time']
+        sv.set(s)
+        ev.set(e)
+
+    def _publish_window(self):
+        """Share the current mode so the Kinetics export resolves un-tuned
+        pulses the same way (bounds default per mode)."""
+        self.shared_data['regression_window'] = {
+            'mode': self._reg_mode(), 'start': None, 'end': None}
+
+    def _current_window_params(self, phase):
+        """The {mode,start,end,...} dict to save for a pulse, from the boxes."""
+        sv, ev = self._win_vars(phase)
+        return {'mode': self._reg_mode(), 'start': sv.get(), 'end': ev.get()}
+
+    def _window_label(self, which):
+        unit = 's' if self._reg_mode() == 'time' else 'pt'
+        return f"{which} ({unit}):"
+
+    def _win_str(self, start, end):
+        """Human-readable window description in the current mode's unit."""
+        if self._reg_mode() == 'time':
+            return f"{start:.2f}-{end:.2f} s"
+        return f"{int(round(start))}-{int(round(end))} pt"
+
+    def _on_window_mode_toggle(self):
+        """Checkbox handler: reset both phases to the new mode's defaults,
+        relabel/reconfigure the spinboxes, publish, and refresh the plots."""
+        s, e = self._reg_default_bounds()
+        for phase in ("charge", "discharge"):
+            sv, ev = self._win_vars(phase)
+            sv.set(s)
+            ev.set(e)
+        is_time = self._reg_mode() == 'time'
+        inc = 0.1 if is_time else 1
+        fmt = "%.2f" if is_time else "%.0f"
+        for name in ("start_time_charge_spinbox", "end_time_charge_spinbox",
+                     "start_time_discharge_spinbox", "end_time_discharge_spinbox"):
+            sb = getattr(self, name, None)
+            if sb is not None:
+                try:
+                    sb.config(increment=inc, format=fmt)
+                except Exception:
+                    pass
+        for name, which in (("start_label_charge", "Start"), ("end_label_charge", "End"),
+                            ("start_label_discharge", "Start"), ("end_label_discharge", "End")):
+            lbl = getattr(self, name, None)
+            if lbl is not None:
+                lbl.config(text=self._window_label(which))
+        self._publish_window()
+        for phase in ("charge", "discharge"):
+            try:
+                self.update_time_limits(phase)
+                self.update_pulse_plot(phase)
+            except Exception:
+                pass
 
     def load_current_cycle(self):
         """Load the currently selected cycle"""
@@ -697,36 +839,16 @@ class RegressionTab:
             if len(self.charge_pulse_nums) > 0:
                 pulse_num = self.charge_pulse_nums[0]
                 key = f"{self.current_cycle}_charge_{pulse_num}"
-                if 'regression_params' in self.shared_data and key in self.shared_data['regression_params']:
-                    params = self.shared_data['regression_params'][key]
-                    if 'start_time' in params:
-                        self.start_time_charge_var.set(params['start_time'])
-                        self.end_time_charge_var.set(params['end_time'])
-                    else:
-                        self.start_time_charge_var.set(0.1)
-                        self.end_time_charge_var.set(1.0)
-                else:
-                    self.start_time_charge_var.set(0.1)
-                    self.end_time_charge_var.set(1.0)
-                
+                self._restore_window_vars("charge", key)
+
                 # Update time limits based on actual rest duration
                 self.update_time_limits("charge")
 
             if len(self.discharge_pulse_nums) > 0:
                 pulse_num = self.discharge_pulse_nums[0]
                 key = f"{self.current_cycle}_discharge_{pulse_num}"
-                if 'regression_params' in self.shared_data and key in self.shared_data['regression_params']:
-                    params = self.shared_data['regression_params'][key]
-                    if 'start_time' in params:
-                        self.start_time_discharge_var.set(params['start_time'])
-                        self.end_time_discharge_var.set(params['end_time'])
-                    else:
-                        self.start_time_discharge_var.set(0.1)
-                        self.end_time_charge_var.set(1.0)
-                else:
-                    self.start_time_discharge_var.set(0.1)
-                    self.end_time_charge_var.set(1.0)
-                
+                self._restore_window_vars("discharge", key)
+
                 # Update time limits based on actual rest duration
                 self.update_time_limits("discharge")
 
@@ -753,18 +875,11 @@ class RegressionTab:
                 rest_data = self.charge_data_pulse[self.charge_data_pulse['pulse_number'] == pulse_num]
                 rest_data = rest_data[rest_data['I/mA'] == 0].copy()
                 
-                if 'regression_params' in self.shared_data and key in self.shared_data['regression_params']:
-                    params = self.shared_data['regression_params'][key]
-                    if 'start_time' in params:
-                        # Use time-based params
-                        r1s, r1l = self.time_to_indices(rest_data, params['start_time'], params['end_time'])
-                    else:
-                        # Old format - use r1s/r1l directly
-                        r1s = params['r1s']
-                        r1l = params['r1l']
+                params = self.shared_data.get('regression_params', {}).get(key)
+                if params:
+                    r1s, r1l = self._resolve_saved(rest_data, params)
                 else:
-                    # Use defaults
-                    r1s, r1l = self.time_to_indices(rest_data, 0.1, 1.0)
+                    r1s, r1l = self._resolve_default(rest_data)
 
                 result = ra.compute_r2_for_pulse(self.charge_data_pulse, pulse_num, r1s, r1l)
                 self.charge_r2_values.append(result['r2'])
@@ -781,18 +896,11 @@ class RegressionTab:
                 rest_data = self.discharge_data_pulse[self.discharge_data_pulse['pulse_number'] == pulse_num]
                 rest_data = rest_data[rest_data['I/mA'] == 0].copy()
                 
-                if 'regression_params' in self.shared_data and key in self.shared_data['regression_params']:
-                    params = self.shared_data['regression_params'][key]
-                    if 'start_time' in params:
-                        # Use time-based params
-                        r1s, r1l = self.time_to_indices(rest_data, params['start_time'], params['end_time'])
-                    else:
-                        # Old format - use r1s/r1l directly
-                        r1s = params['r1s']
-                        r1l = params['r1l']
+                params = self.shared_data.get('regression_params', {}).get(key)
+                if params:
+                    r1s, r1l = self._resolve_saved(rest_data, params)
                 else:
-                    # Use defaults
-                    r1s, r1l = self.time_to_indices(rest_data, 0.1, 1.0)
+                    r1s, r1l = self._resolve_default(rest_data)
 
                 result = ra.compute_r2_for_pulse(self.discharge_data_pulse, pulse_num, r1s, r1l)
                 self.discharge_r2_values.append(result['r2'])
@@ -811,10 +919,7 @@ class RegressionTab:
             rest_data = self.charge_data_pulse[self.charge_data_pulse['pulse_number'] == pulse_num]
             rest_data = rest_data[rest_data['I/mA'] == 0].copy()
             
-            # Convert time to indices
-            start_time = self.start_time_charge_var.get()
-            end_time = self.end_time_charge_var.get()
-            r1s, r1l = self.time_to_indices(rest_data, start_time, end_time)
+            r1s, r1l = self._resolve_current(rest_data, "charge")
 
             result = ra.compute_r2_for_pulse(self.charge_data_pulse, pulse_num, r1s, r1l)
             
@@ -833,10 +938,7 @@ class RegressionTab:
             rest_data = self.discharge_data_pulse[self.discharge_data_pulse['pulse_number'] == pulse_num]
             rest_data = rest_data[rest_data['I/mA'] == 0].copy()
             
-            # Convert time to indices
-            start_time = self.start_time_discharge_var.get()
-            end_time = self.end_time_discharge_var.get()
-            r1s, r1l = self.time_to_indices(rest_data, start_time, end_time)
+            r1s, r1l = self._resolve_current(rest_data, "discharge")
 
             result = ra.compute_r2_for_pulse(self.discharge_data_pulse, pulse_num, r1s, r1l)
             
@@ -877,18 +979,7 @@ class RegressionTab:
             pulse_num = self.charge_pulse_nums[self.current_charge_idx]
             key = f"{self.current_cycle}_charge_{pulse_num}"
 
-            # Load saved params OR reset to defaults
-            if 'regression_params' in self.shared_data and key in self.shared_data['regression_params']:
-                params = self.shared_data['regression_params'][key]
-                if 'start_time' in params:
-                    self.start_time_charge_var.set(params['start_time'])
-                    self.end_time_charge_var.set(params['end_time'])
-                else:
-                    self.start_time_charge_var.set(0.1)
-                    self.end_time_charge_var.set(1.0)
-            else:
-                self.start_time_charge_var.set(0.1)
-                self.end_time_charge_var.set(1.0)
+            self._restore_window_vars("charge", key)
 
             # Update time limits based on actual rest duration
             self.update_time_limits("charge")
@@ -903,18 +994,7 @@ class RegressionTab:
             pulse_num = self.charge_pulse_nums[self.current_charge_idx]
             key = f"{self.current_cycle}_charge_{pulse_num}"
 
-            # Load saved params OR reset to defaults
-            if 'regression_params' in self.shared_data and key in self.shared_data['regression_params']:
-                params = self.shared_data['regression_params'][key]
-                if 'start_time' in params:
-                    self.start_time_charge_var.set(params['start_time'])
-                    self.end_time_charge_var.set(params['end_time'])
-                else:
-                    self.start_time_charge_var.set(0.1)
-                    self.end_time_charge_var.set(1.0)
-            else:
-                self.start_time_charge_var.set(0.1)
-                self.end_time_charge_var.set(1.0)
+            self._restore_window_vars("charge", key)
 
             # Update time limits based on actual rest duration
             self.update_time_limits("charge")
@@ -929,18 +1009,7 @@ class RegressionTab:
             pulse_num = self.discharge_pulse_nums[self.current_discharge_idx]
             key = f"{self.current_cycle}_discharge_{pulse_num}"
 
-            # Load saved params OR reset to defaults
-            if 'regression_params' in self.shared_data and key in self.shared_data['regression_params']:
-                params = self.shared_data['regression_params'][key]
-                if 'start_time' in params:
-                    self.start_time_discharge_var.set(params['start_time'])
-                    self.end_time_discharge_var.set(params['end_time'])
-                else:
-                    self.start_time_discharge_var.set(0.1)
-                    self.end_time_charge_var.set(1.0)
-            else:
-                self.start_time_discharge_var.set(0.1)
-                self.end_time_charge_var.set(1.0)
+            self._restore_window_vars("discharge", key)
 
             # Update time limits based on actual rest duration
             self.update_time_limits("discharge")
@@ -955,18 +1024,7 @@ class RegressionTab:
             pulse_num = self.discharge_pulse_nums[self.current_discharge_idx]
             key = f"{self.current_cycle}_discharge_{pulse_num}"
 
-            # Load saved params OR reset to defaults
-            if 'regression_params' in self.shared_data and key in self.shared_data['regression_params']:
-                params = self.shared_data['regression_params'][key]
-                if 'start_time' in params:
-                    self.start_time_discharge_var.set(params['start_time'])
-                    self.end_time_discharge_var.set(params['end_time'])
-                else:
-                    self.start_time_discharge_var.set(0.1)
-                    self.end_time_charge_var.set(1.0)
-            else:
-                self.start_time_discharge_var.set(0.1)
-                self.end_time_charge_var.set(1.0)
+            self._restore_window_vars("discharge", key)
 
             # Update time limits based on actual rest duration
             self.update_time_limits("discharge")
@@ -1053,8 +1111,7 @@ class RegressionTab:
         rest_data['ΔV'] = rest_data['E/V'] - V0
         times_sqrt = np.sqrt(rest_data['t/s'].values - rest_data['t/s'].values[0])
 
-        # Convert time to indices
-        r1s, r1l = self.time_to_indices(rest_data, start_time, end_time)
+        r1s, r1l = self._resolve_current(rest_data, phase)
 
         # Compute regression
         regression_result = ra.compute_single_pulse_regression(rest_data, r1s, r1l)
@@ -1069,8 +1126,19 @@ class RegressionTab:
                 fig.delaxes(ax)
         ax1.clear()
 
-        ax1.plot(times_sqrt, rest_data['ΔV'].values, f'{color}o-', 
+        ax1.plot(times_sqrt, rest_data['ΔV'].values, f'{color}o-',
                 markersize=3, label='ΔV', linewidth=1)
+
+        # F11: shade the selected regression window (light grey). It is drawn
+        # from the whole set of rest samples, so it redraws whenever the window
+        # (time/index, Start/End) changes.
+        if r1l > 0 and r1s < len(times_sqrt):
+            hi = min(r1s + r1l - 1, len(times_sqrt) - 1)
+            x_lo = times_sqrt[r1s]
+            x_hi = times_sqrt[hi]
+            if x_hi > x_lo:
+                ax1.axvspan(x_lo, x_hi, color='grey', alpha=0.15,
+                            zorder=0, label='_nolegend_')
 
         if not np.isnan(regression_result['r2']) and len(rest_data) >= r1s + r1l:
             X_fit = times_sqrt[r1s:r1s + r1l]
@@ -1094,9 +1162,13 @@ class RegressionTab:
         ax1.set_ylabel('ΔV (V)', fontsize=12)
         
         if self.show_title_var.get():
+            if self._reg_mode() == 'time':
+                win_desc = f'{start_time:.2f}-{end_time:.2f} s'
+            else:
+                win_desc = f'{int(round(start_time))}-{int(round(end_time))} pt'
             ax1.set_title(
                 f'{phase.capitalize()} Pulse {pulse_num} (Cycle {self.current_cycle})\n' +
-                f'V₀ = {V0:.4f} V | Window: {start_time:.2f}-{end_time:.2f}s ' +
+                f'V₀ = {V0:.4f} V | Window: {win_desc} ' +
                 f'({r1l} pts) | Rest: {max_time:.2f}s total',
                 fontsize=11
             )
@@ -1181,17 +1253,18 @@ class RegressionTab:
         if 'regression_params' not in self.shared_data:
             self.shared_data['regression_params'] = {}
 
-        # Get rest data and convert time to indices
+        # Get rest data and resolve the window in the current mode
         rest_data = pulse_data[pulse_data['pulse_number'] == pulse_num]
         rest_data = rest_data[rest_data['I/mA'] == 0].copy()
-        r1s, r1l = self.time_to_indices(rest_data, start_time, end_time)
+        r1s, r1l = self._resolve_current(rest_data, phase)
 
         # Compute R² and save single-pulse params
         result = ra.compute_r2_for_pulse(pulse_data, pulse_num, r1s, r1l)
         key = f"{self.current_cycle}_{phase}_{pulse_num}"
         params = {
-            'start_time': start_time,
-            'end_time': end_time,
+            'mode': self._reg_mode(),
+            'start': start_time,
+            'end': end_time,
             'r1s': r1s,
             'r1l': r1l,
             'r2': result['r2'],
@@ -1216,13 +1289,14 @@ class RegressionTab:
                 # Get rest data for this pulse
                 rest_data_p = pulse_data[pulse_data['pulse_number'] == p]
                 rest_data_p = rest_data_p[rest_data_p['I/mA'] == 0].copy()
-                r1s_p, r1l_p = self.time_to_indices(rest_data_p, start_time, end_time)
-                
-                # Compute r2 for each pulse using the same time window
+                r1s_p, r1l_p = ra.resolve_window(rest_data_p, self._reg_mode(), start_time, end_time)
+
+                # Compute r2 for each pulse using the same window
                 res_all = ra.compute_r2_for_pulse(pulse_data, p, r1s_p, r1l_p)
                 params_all = {
-                    'start_time': start_time,
-                    'end_time': end_time,
+                    'mode': self._reg_mode(),
+                    'start': start_time,
+                    'end': end_time,
                     'r1s': r1s_p,
                     'r1l': r1l_p,
                     'r2': res_all['r2'],
@@ -1242,17 +1316,17 @@ class RegressionTab:
                 pass
 
             messagebox.showinfo("Applied to All",
-                                f"✅ Applied {start_time:.2f}s-{end_time:.2f}s to all {applied_count} {phase} pulses in cycle {self.current_cycle}")
-            print(f"✅ Applied to ALL pulses ({phase}) in cycle {self.current_cycle}: {start_time:.2f}s-{end_time:.2f}s")
+                                f"✅ Applied {self._win_str(start_time, end_time)} to all {applied_count} {phase} pulses in cycle {self.current_cycle}")
+            print(f"✅ Applied to ALL pulses ({phase}) in cycle {self.current_cycle}: {self._win_str(start_time, end_time)}")
             return
 
         # Otherwise, just saved the single pulse
         messagebox.showinfo("Saved", 
                            f"✅ {phase.capitalize()} parameters saved!\n\n"
                            f"Cycle {self.current_cycle}, pulse {pulse_num}\n"
-                           f"Window: {start_time:.2f}s-{end_time:.2f}s, R²={result['r2']:.4f}")
+                           f"Window: {self._win_str(start_time, end_time)}, R²={result['r2']:.4f}")
 
-        print(f"✅ Saved {phase} params for {key}: {start_time:.2f}s-{end_time:.2f}s")
+        print(f"✅ Saved {phase} params for {key}: {self._win_str(start_time, end_time)}")
 
     def save_all_pulses(self, phase):
         """Save the parameters for ALL pulses of the selected phase"""
@@ -1313,7 +1387,7 @@ class RegressionTab:
             # Get rest data and convert
             rest_data_p = pulse_data[pulse_data['pulse_number'] == p]
             rest_data_p = rest_data_p[rest_data_p['I/mA'] == 0].copy()
-            r1s, r1l = self.time_to_indices(rest_data_p, start_time, end_time)
+            r1s, r1l = ra.resolve_window(rest_data_p, self._reg_mode(), start_time, end_time)
 
             # Compute R²
             try:
@@ -1367,7 +1441,7 @@ class RegressionTab:
         # Confirm action
         response = messagebox.askyesno(
             "Apply to All Cycles",
-            f"Apply window {start_time:.2f}s-{end_time:.2f}s to ALL {phase} pulses in ALL {len(self.cycle_list)} cycles?\n\n"
+            f"Apply window {self._win_str(start_time, end_time)} to ALL {phase} pulses in ALL {len(self.cycle_list)} cycles?\n\n"
             f"This will overwrite any existing saved parameters.\n\n"
             f"Continue?"
         )
@@ -1384,7 +1458,7 @@ class RegressionTab:
         cycles_processed = 0
         
         print(f"\n{'='*60}")
-        print(f"APPLYING TO ALL CYCLES: {start_time:.2f}s-{end_time:.2f}s ({phase})")
+        print(f"APPLYING TO ALL CYCLES: {self._win_str(start_time, end_time)} ({phase})")
         print(f"{'='*60}")
         
         # Loop through all cycles
@@ -1423,8 +1497,7 @@ class RegressionTab:
                     if len(rest_data) == 0:
                         continue
                     
-                    # Convert time to indices for this specific pulse
-                    r1s, r1l = self.time_to_indices(rest_data, start_time, end_time)
+                    r1s, r1l = ra.resolve_window(rest_data, self._reg_mode(), start_time, end_time)
                     
                     # Compute R²
                     try:
@@ -1466,7 +1539,7 @@ class RegressionTab:
         print(f"SUMMARY:")
         print(f"  • Cycles processed: {cycles_processed}/{len(self.cycle_list)}")
         print(f"  • Total pulses saved: {total_saved}")
-        print(f"  • Time window: {start_time:.2f}s-{end_time:.2f}s")
+        print(f"  • Time window: {self._win_str(start_time, end_time)}")
         print(f"{'='*60}\n")
         
         # Refresh current cycle display if we're viewing one of the affected cycles
@@ -1480,7 +1553,7 @@ class RegressionTab:
         # Show success message
         messagebox.showinfo(
             "Applied to All Cycles",
-            f"✅ Successfully applied {start_time:.2f}s-{end_time:.2f}s window!\n\n"
+            f"✅ Successfully applied {self._win_str(start_time, end_time)} window!\n\n"
             f"Cycles processed: {cycles_processed}\n"
             f"Total {phase} pulses saved: {total_saved}\n\n"
             f"Parameters are now saved and will be used in Tab 5."
@@ -1539,11 +1612,11 @@ class RegressionTab:
                             key = f"{cycle_num}_charge_{pulse_num}"
                             rest_data = charge_processed[charge_processed['pulse_number'] == pulse_num]
                             rest_data = rest_data[rest_data['I/mA'] == 0].copy()
-                            if key in params_dict:
-                                p = params_dict[key]
-                                r1s, r1l = self.time_to_indices(rest_data, p['start_time'], p['end_time'])
+                            params = params_dict.get(key)
+                            if params:
+                                r1s, r1l = self._resolve_saved(rest_data, params)
                             else:
-                                r1s, r1l = self.time_to_indices(rest_data, 0.1, 1.0)
+                                r1s, r1l = self._resolve_default(rest_data)
                             result = ra.compute_r2_for_pulse(charge_processed, pulse_num, r1s, r1l)
                             charge_data.append({'cycle': cycle_num, 'pulse_idx': i, 'r2': result['r2']})
 
@@ -1558,11 +1631,11 @@ class RegressionTab:
                             key = f"{cycle_num}_discharge_{pulse_num}"
                             rest_data = discharge_processed[discharge_processed['pulse_number'] == pulse_num]
                             rest_data = rest_data[rest_data['I/mA'] == 0].copy()
-                            if key in params_dict:
-                                p = params_dict[key]
-                                r1s, r1l = self.time_to_indices(rest_data, p['start_time'], p['end_time'])
+                            params = params_dict.get(key)
+                            if params:
+                                r1s, r1l = self._resolve_saved(rest_data, params)
                             else:
-                                r1s, r1l = self.time_to_indices(rest_data, 0.1, 1.0)
+                                r1s, r1l = self._resolve_default(rest_data)
                             result = ra.compute_r2_for_pulse(discharge_processed, pulse_num, r1s, r1l)
                             discharge_data.append({'cycle': cycle_num, 'pulse_idx': i, 'r2': result['r2']})
 
@@ -1733,16 +1806,12 @@ class RegressionTab:
                             rest_data = charge_processed[charge_processed['pulse_number'] == pulse_num]
                             rest_data = rest_data[rest_data['I/mA'] == 0].copy()
                             
-                            # Check if saved params exist
-                            if 'regression_params' in self.shared_data and key in self.shared_data['regression_params']:
-                                params = self.shared_data['regression_params'][key]
-                                if 'start_time' in params:
-                                    r1s, r1l = self.time_to_indices(rest_data, params['start_time'], params['end_time'])
-                                else:
-                                    r1s = params['r1s']
-                                    r1l = params['r1l']
+                            # Resolve window: saved per-pulse, else current-mode default
+                            params = self.shared_data.get('regression_params', {}).get(key)
+                            if params:
+                                r1s, r1l = self._resolve_saved(rest_data, params)
                             else:
-                                r1s, r1l = self.time_to_indices(rest_data, 0.1, 1.0)
+                                r1s, r1l = self._resolve_default(rest_data)
 
                             result = ra.compute_r2_for_pulse(charge_processed, pulse_num, r1s, r1l)
                             r2_value = result['r2']
@@ -1763,16 +1832,12 @@ class RegressionTab:
                             rest_data = discharge_processed[discharge_processed['pulse_number'] == pulse_num]
                             rest_data = rest_data[rest_data['I/mA'] == 0].copy()
                             
-                            # Check if saved params exist
-                            if 'regression_params' in self.shared_data and key in self.shared_data['regression_params']:
-                                params = self.shared_data['regression_params'][key]
-                                if 'start_time' in params:
-                                    r1s, r1l = self.time_to_indices(rest_data, params['start_time'], params['end_time'])
-                                else:
-                                    r1s = params['r1s']
-                                    r1l = params['r1l']
+                            # Resolve window: saved per-pulse, else current-mode default
+                            params = self.shared_data.get('regression_params', {}).get(key)
+                            if params:
+                                r1s, r1l = self._resolve_saved(rest_data, params)
                             else:
-                                r1s, r1l = self.time_to_indices(rest_data, 0.1, 1.0)
+                                r1s, r1l = self._resolve_default(rest_data)
 
                             result = ra.compute_r2_for_pulse(discharge_processed, pulse_num, r1s, r1l)
                             r2_value = result['r2']
