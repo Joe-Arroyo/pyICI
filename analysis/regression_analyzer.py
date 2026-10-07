@@ -28,10 +28,23 @@ from analysis.phase_classifier import classify_charge_discharge
 # =============================================================================
 
 # Regression parameters
-DEFAULT_R1_START = 2   # R1S - Short regression window start
-DEFAULT_R1_LENGTH = 10  # R1L - Long regression window length
+DEFAULT_R1_START = 2   # R1S - Short regression window start (0-based, legacy)
+DEFAULT_R1_LENGTH = 10  # R1L - Long regression window length (legacy)
 MAX_REST_DURATION = 1800  # seconds
 ZERO_THRESHOLD = 1e-5
+
+# Regression window (F11). The fit window is specified as a *mode* plus two
+# bounds and resolved per pulse to 0-based sample indices by resolve_window().
+#   - "index" bounds are 1-based and INCLUSIVE (user-friendly: point 1, 2, 3, …)
+#   - "time" bounds are seconds from the first rest sample
+# The analysis never branches on the mode beyond resolve_window; everything
+# downstream works in indices, exactly as before.
+DEFAULT_WINDOW_MODE = "index"   # "index" | "time"
+DEFAULT_INDEX_START = 2         # 1-based, inclusive
+DEFAULT_INDEX_END = 10          # 1-based, inclusive
+DEFAULT_TIME_START = 0.1        # seconds
+DEFAULT_TIME_END = 1.0          # seconds
+MIN_WINDOW_POINTS = 3           # < 3 pts -> NaN (s2 = Σr²/(n-2) is undefined at n=2)
 
 # =============================================================================
 # GLOBAL VARIABLES
@@ -47,6 +60,82 @@ saved_reg_params = {}
 # classify_charge_discharge is imported from analysis.phase_classifier (F1: one
 # implementation, imported everywhere). It remains available as
 # regression_analyzer.classify_charge_discharge for existing callers.
+
+# =============================================================================
+# WINDOW RESOLUTION (F11) — single source of truth for time<->index windows
+# =============================================================================
+
+def time_to_indices(rest_data, start_time, end_time):
+    """Convert a time window to a 0-based (r1_start, r1_length) sample window.
+
+    Times are seconds relative to the first rest sample. Each endpoint snaps to
+    the nearest sample (the historical pyICI behaviour); the END sample is
+    INCLUDED in the window. The window is clamped to the available span. No
+    minimum size is forced here — a window that ends up with fewer than
+    MIN_WINDOW_POINTS points is left as-is and returns NaN from
+    compute_single_pulse_regression (whose >= 3-point guard handles it).
+
+    Parameters
+    ----------
+    rest_data : pandas.DataFrame
+        The rest-period samples of one pulse (must have a ``t/s`` column).
+    start_time, end_time : float
+        Window bounds in seconds, relative to the first rest sample.
+
+    Returns
+    -------
+    tuple of int
+        ``(r1_start, r1_length)`` — 0-based start index and point count, as
+        consumed by ``compute_single_pulse_regression``. ``(0, 0)`` for empty
+        data.
+    """
+    n = len(rest_data)
+    if n == 0:
+        return 0, 0
+    t_rel = rest_data['t/s'].values - rest_data['t/s'].values[0]
+    max_time = t_rel[-1]
+    start_time = max(0.0, min(start_time, max_time))
+    end_time = max(start_time, min(end_time, max_time))
+    start_idx = int(np.argmin(np.abs(t_rel - start_time)))
+    end_idx = int(np.argmin(np.abs(t_rel - end_time)))
+    r1_start = start_idx
+    r1_length = (end_idx - start_idx) + 1   # inclusive of the end sample
+    return r1_start, r1_length
+
+
+def resolve_window(rest_data, mode=DEFAULT_WINDOW_MODE, start=None, end=None):
+    """Resolve a (mode, start, end) window spec to a 0-based (r1_start, r1_length).
+
+    This is the one place that understands "time" vs "index"; everything
+    downstream works purely in sample indices.
+
+    Parameters
+    ----------
+    rest_data : pandas.DataFrame
+        The rest-period samples of one pulse (needs ``t/s`` for time mode).
+    mode : {'index', 'time'}
+        'index' — ``start``/``end`` are 1-based, INCLUSIVE sample positions.
+        'time'  — ``start``/``end`` are seconds from the first rest sample.
+    start, end : number, optional
+        Window bounds in the unit implied by ``mode``. When ``None`` they fall
+        back to the module ``DEFAULT_*`` constants for that mode.
+
+    Returns
+    -------
+    tuple of int
+        ``(r1_start, r1_length)`` for ``compute_single_pulse_regression``.
+    """
+    if mode == "time":
+        start = DEFAULT_TIME_START if start is None else start
+        end = DEFAULT_TIME_END if end is None else end
+        return time_to_indices(rest_data, start, end)
+    # index mode (default): 1-based inclusive -> 0-based start + length
+    start = DEFAULT_INDEX_START if start is None else int(start)
+    end = DEFAULT_INDEX_END if end is None else int(end)
+    r1_start = max(0, start - 1)
+    r1_length = max(0, end - start + 1)
+    return r1_start, r1_length
+
 
 # =============================================================================
 # PULSE PROCESSING FUNCTIONS
