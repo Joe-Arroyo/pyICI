@@ -13,6 +13,12 @@ import numpy as np
 import pandas as pd
 from collections import namedtuple
 
+# Single source of truth for pulse segmentation (F1): assign_valid_pulses and
+# compute_V0_t0 live in analysis.regression_analyzer (the same implementations
+# the R/k pipeline uses). Imported here so the Pulse tab segments pulses exactly
+# as the exported R/k results do.
+from analysis.regression_analyzer import assign_valid_pulses, compute_V0_t0
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -35,74 +41,12 @@ def _empty_analysis(cycle_num):
 
 
 # =============================================================================
-# PULSE ASSIGNMENT FUNCTIONS
+# PULSE ASSIGNMENT  (single source of truth — see import at top of module)
 # =============================================================================
-
-def assign_valid_pulses(df, max_rest=MAX_REST_DURATION):
-    """
-    Assign pulse numbers to valid pulses based on rest duration
-    Returns dataframe with only valid pulses (pulse_number > 0)
-    """
-    df = df.copy()
-    pulse_number = np.zeros(len(df), dtype=int)
-    pulse_counter = 0
-    i = 0
-    n = len(df)
-
-    while i < n:
-        if df['I/mA'].iloc[i] != 0:  # Start of active period
-            start = i
-            # Find end of active period
-            while i < n and df['I/mA'].iloc[i] != 0:
-                i += 1
-            rest_start = i
-            # Find end of rest period
-            while i < n and df['I/mA'].iloc[i] == 0:
-                i += 1
-
-            # Check if rest duration is within limit
-            if rest_start < n:
-                rest_duration = df['t/s'].iloc[i-1] - df['t/s'].iloc[rest_start]
-                if 0 < rest_duration <= max_rest:
-                    pulse_counter += 1
-                    pulse_number[start:i] = pulse_counter
-        else:
-            i += 1
-
-    df['pulse_number'] = pulse_number
-    valid_df = df[df['pulse_number'] > 0].copy()
-
-    return valid_df
-
-def compute_V0_t0(df):
-    """
-    Compute V0 and t0 for each pulse
-    V0 = voltage at end of active period
-    t0 = time at end of active period
-    """
-    df = df.copy()
-    V0_list, t0_list = [], []
-
-    for pulse_num in df['pulse_number'].unique():
-        pulse_df = df[df['pulse_number'] == pulse_num].copy()
-        nonzero = pulse_df[pulse_df['I/mA'] != 0]
-
-        if not nonzero.empty:
-            V0 = nonzero['E/V'].iloc[-1]  # Last voltage in active period
-            t0 = nonzero['t/s'].iloc[-1]  # Last time in active period
-        else:
-            V0, t0 = np.nan, np.nan
-
-        # Assign V0 and t0 to all points in this pulse
-        pulse_length = len(pulse_df)
-        V0_list.extend([V0] * pulse_length)
-        t0_list.extend([t0] * pulse_length)
-
-    df['V0'] = V0_list
-    df['t0'] = t0_list
-    df['rest'] = (df['I/mA'] == 0)
-
-    return df
+# assign_valid_pulses and compute_V0_t0 are imported from
+# analysis.regression_analyzer (F1: one implementation, imported everywhere).
+# analyze_cycle_pulses below adapts their output to the shape the Pulse tab
+# expects (valid rows only, plus a boolean `rest` column).
 
 # =============================================================================
 # PHASE CLASSIFICATION FUNCTIONS
@@ -187,8 +131,11 @@ def analyze_cycle_pulses(df_raw, cycle_num):
     if len(charge_data) > 0:
         try:
             charge_processed = assign_valid_pulses(charge_data, MAX_REST_DURATION)
+            # canonical assign_valid_pulses returns the full frame; keep valid pulses only
+            charge_processed = charge_processed[charge_processed['pulse_number'] > 0].copy()
             if len(charge_processed) > 0:
                 charge_data_rest = compute_V0_t0(charge_processed)
+                charge_data_rest['rest'] = (charge_data_rest['I/mA'] == 0)
                 charge_pulse_nums = sorted([int(p) for p in charge_data_rest['pulse_number'].unique() if p > 0])
         except Exception:
             pass
@@ -197,8 +144,11 @@ def analyze_cycle_pulses(df_raw, cycle_num):
     if len(discharge_data) > 0:
         try:
             discharge_processed = assign_valid_pulses(discharge_data, MAX_REST_DURATION)
+            # canonical assign_valid_pulses returns the full frame; keep valid pulses only
+            discharge_processed = discharge_processed[discharge_processed['pulse_number'] > 0].copy()
             if len(discharge_processed) > 0:
                 discharge_data_rest = compute_V0_t0(discharge_processed)
+                discharge_data_rest['rest'] = (discharge_data_rest['I/mA'] == 0)
                 discharge_pulse_nums = sorted([int(p) for p in discharge_data_rest['pulse_number'].unique() if p > 0])
         except Exception:
             pass

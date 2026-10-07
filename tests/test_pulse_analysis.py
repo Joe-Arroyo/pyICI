@@ -32,3 +32,17 @@ def test_analyze_cycle_none_and_missing_are_empty():
     for r in (analyze_cycle_pulses(None, 1), analyze_cycle_pulses(df, 99)):
         assert r.charge_pulses == [] and r.discharge_pulses == []
         assert r.charge_data.empty and r.discharge_data.empty
+
+
+def test_single_source_of_truth():
+    """F1 guard: each core algorithm has exactly ONE implementation, imported
+    everywhere. If a divergent copy is reintroduced, these identity checks fail."""
+    import analysis.pulse_analyzer as pa
+    import analysis.regression_analyzer as ra
+    import analysis.phase_classifier as pc
+
+    # pulse segmentation: pulse_analyzer reuses regression_analyzer's functions
+    assert pa.assign_valid_pulses is ra.assign_valid_pulses
+    assert pa.compute_V0_t0 is ra.compute_V0_t0
+    # phase classification: regression_analyzer re-exports phase_classifier's
+    assert ra.classify_charge_discharge is pc.classify_charge_discharge

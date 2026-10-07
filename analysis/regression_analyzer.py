@@ -16,6 +16,13 @@ import numpy as np
 import pandas as pd
 from collections import namedtuple
 
+# Single source of truth for phase classification (F1): the canonical
+# classify_charge_discharge lives in analysis.phase_classifier. It is imported
+# (and thereby re-exported) here so existing callers that do
+# `from analysis.regression_analyzer import classify_charge_discharge`
+# keep working, now against the one shared implementation.
+from analysis.phase_classifier import classify_charge_discharge
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -35,35 +42,11 @@ regression_results = {'Charge': [], 'Discharge': []}
 saved_reg_params = {}
 
 # =============================================================================
-# PHASE CLASSIFICATION FUNCTION (from Cell 2)
+# PHASE CLASSIFICATION  (single source of truth — see import at top of module)
 # =============================================================================
-
-def classify_charge_discharge(df, current_col='I/mA'):
-    """
-    Classify data points as charge, discharge, or rest based on current.
-    This is CRITICAL for proper pulse separation.
-    """
-    current = df[current_col].values
-    labels = np.empty(len(current), dtype=object)
-    
-    i = 0
-    while i < len(current):
-        if current[i] > 0:
-            start = i
-            while i < len(current) and current[i] >= 0:
-                i += 1
-            labels[start:i] = 'charge'
-        elif current[i] < 0:
-            start = i
-            while i < len(current) and current[i] <= 0:
-                i += 1
-            labels[start:i] = 'discharge'
-        else:
-            # Current is zero - assign same as previous or 'rest'
-            labels[i] = 'rest' if i == 0 else labels[i-1]
-            i += 1
-    
-    return labels
+# classify_charge_discharge is imported from analysis.phase_classifier (F1: one
+# implementation, imported everywhere). It remains available as
+# regression_analyzer.classify_charge_discharge for existing callers.
 
 # =============================================================================
 # PULSE PROCESSING FUNCTIONS
