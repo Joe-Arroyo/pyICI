@@ -9,8 +9,9 @@ lock in *today's* numbers as a regression guard.
 If the algorithm is changed on purpose, re-capture the expected values and update
 the constants below in the same commit, with a note in the CHANGELOG.
 
-Window: the default index-based regression window (r1s=2, r1l=10), i.e. the batch
-path -- see DEVELOPMENT_PLAN.md F11.
+Window: the default regression window — index mode, 1-based inclusive points 2-10
+(F11), resolved to 0-based samples [1:10] = 9 points per pulse. These numbers were
+re-pinned when F11 made the default window selectable (v1.4.0).
 """
 import os
 
@@ -68,14 +69,18 @@ def test_ten_cycles_cycle0_charge(ten_cycles):
     res = compute_R_k_for_cycle(ten_cycles.df_raw, 0, "charge")
     assert res is not None
     assert len(res["pulse_nums"]) == 12
+    # default window applied: index mode, 1-based 2-10 -> 9 samples per pulse
+    assert res["window_mode"][0] == "index"
+    assert res["window_start"][0] == 2 and res["window_end"][0] == 10
+    assert res["n_points"][0] == 9
     R = np.asarray(res["R"], float)
     k = np.asarray(res["k"], float)
     r2 = np.asarray(res["r2"], float)
-    assert R[0] == pytest.approx(6.052229123, rel=REL)
-    assert k[0] == pytest.approx(0.2875722783, rel=REL)
-    assert np.nanmean(R) == pytest.approx(4.970390061, rel=REL)
-    assert np.nanmean(k) == pytest.approx(0.1270291357, rel=REL)
-    assert np.nanmean(r2) == pytest.approx(0.9814368104, rel=REL)
+    assert R[0] == pytest.approx(5.962341920, rel=REL)
+    assert k[0] == pytest.approx(0.4079367969, rel=REL)
+    assert np.nanmean(R) == pytest.approx(4.951180730, rel=REL)
+    assert np.nanmean(k) == pytest.approx(0.1525349710, rel=REL)
+    assert np.nanmean(r2) == pytest.approx(0.9718123620, rel=REL)
 
 
 def test_ten_cycles_cycle0_discharge(ten_cycles):
@@ -84,16 +89,16 @@ def test_ten_cycles_cycle0_discharge(ten_cycles):
     assert len(res["pulse_nums"]) == 11
     R = np.asarray(res["R"], float)
     k = np.asarray(res["k"], float)
-    assert np.nanmean(R) == pytest.approx(5.252563355, rel=REL)
-    assert np.nanmean(k) == pytest.approx(0.1745159082, rel=REL)
+    assert np.nanmean(R) == pytest.approx(5.209544980, rel=REL)
+    assert np.nanmean(k) == pytest.approx(0.2321578120, rel=REL)
 
 
 def test_ten_cycles_last_cycle_charge(ten_cycles):
     res = compute_R_k_for_cycle(ten_cycles.df_raw, 9, "charge")
     assert res is not None
     assert len(res["pulse_nums"]) == 10
-    assert np.nanmean(np.asarray(res["R"], float)) == pytest.approx(5.790928647, rel=REL)
-    assert np.nanmean(np.asarray(res["k"], float)) == pytest.approx(0.1276479291, rel=REL)
+    assert np.nanmean(np.asarray(res["R"], float)) == pytest.approx(5.777322320, rel=REL)
+    assert np.nanmean(np.asarray(res["k"], float)) == pytest.approx(0.1455003720, rel=REL)
 
 
 # --------------------------------------------------------------------------- #
@@ -112,6 +117,6 @@ def test_one_cycle_charge(one_cycle):
     assert res is not None
     assert len(res["pulse_nums"]) == 69
     R = np.asarray(res["R"], float)
-    assert R[0] == pytest.approx(6.60469031, rel=REL)
-    assert np.nanmean(R) == pytest.approx(4.547972216, rel=REL)
-    assert np.nanmean(np.asarray(res["r2"], float)) == pytest.approx(0.8211518116, rel=REL)
+    assert R[0] == pytest.approx(6.318487350, rel=REL)
+    assert np.nanmean(R) == pytest.approx(4.507613430, rel=REL)
+    assert np.nanmean(np.asarray(res["r2"], float)) == pytest.approx(0.8476527570, rel=REL)
