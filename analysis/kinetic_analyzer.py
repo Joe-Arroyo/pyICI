@@ -14,14 +14,30 @@ from analysis.regression_analyzer import (
     compute_V0_t0,
     get_V0,
     compute_single_pulse_regression,
+    resolve_window,
     DEFAULT_R1_START,
     DEFAULT_R1_LENGTH,
+    DEFAULT_WINDOW_MODE,
+    DEFAULT_INDEX_START,
+    DEFAULT_INDEX_END,
+    DEFAULT_TIME_START,
+    DEFAULT_TIME_END,
     MAX_REST_DURATION
 )
 from analysis.phase_classifier import calculate_capacity
 
 DEFAULT_R1S = DEFAULT_R1_START
 DEFAULT_R1L = DEFAULT_R1_LENGTH
+
+
+def _window_defaults(mode, start, end):
+    """Fill in the default bounds for a window mode, returning display values
+    (what goes in the export's Window_Start / Window_End columns)."""
+    if mode == "time":
+        return (DEFAULT_TIME_START if start is None else start,
+                DEFAULT_TIME_END if end is None else end)
+    return (DEFAULT_INDEX_START if start is None else start,
+            DEFAULT_INDEX_END if end is None else end)
 
 def get_pulse_t0_values(data, pulse_numbers):
     """Return t0 (the end-of-active-period timestamp) for each pulse, aligned
@@ -136,12 +152,14 @@ def get_pre_pulse_currents(data, pulse_numbers):
     
     return np.array(currents), np.array(voltages)
 
-def compute_regression_with_covariance(data, pulse_num, r1s, r1l):
+def compute_regression_with_covariance(data, pulse_num, window_mode, window_start, window_end):
     """Fit ΔV vs. √t for a single pulse's rest period, with covariance.
 
-    Builds the relaxation curve for one pulse — ΔV = E − V0 against
-    √(t − t0) over the rest samples — and fits a straight line over the window
-    ``[r1s : r1s + r1l]`` (sample indices into the rest period).
+    Builds the relaxation curve for one pulse — ΔV = E − V0 against √(t − t0)
+    over the rest samples — resolves the (mode, start, end) window spec to sample
+    indices for THIS pulse via ``resolve_window``, and fits a straight line over
+    them. The window is resolved per pulse, so a time window maps to the right
+    samples whatever the local sampling rate.
 
     Parameters
     ----------
@@ -149,40 +167,50 @@ def compute_regression_with_covariance(data, pulse_num, r1s, r1l):
         Pulse-labelled phase data.
     pulse_num : int
         Pulse to fit.
-    r1s, r1l : int
-        Regression window start offset and length, as sample indices into this
-        pulse's rest period.
+    window_mode : {'index', 'time'}
+        How ``window_start``/``window_end`` are interpreted (see
+        :func:`analysis.regression_analyzer.resolve_window`).
+    window_start, window_end : number or None
+        Window bounds in the unit implied by ``window_mode`` (``None`` → the
+        mode's default).
 
     Returns
     -------
     dict
         Keys ``'pulse'``, ``'r2'``, ``'slope'``, ``'intercept'``, ``'cov'``,
-        ``'V0'``. ``'cov'`` is the 2×2 covariance matrix of (slope, intercept),
-        or ``None``. Degenerate cases — an empty or too-short rest window, or an
+        ``'V0'``, ``'n_points'``. ``'cov'`` is the 2×2 covariance matrix of
+        (slope, intercept), or ``None``; ``'n_points'`` is how many samples the
+        window actually selected. Degenerate cases — empty/too-short window or an
         undefined V0 — return ``nan`` numeric fields.
     """
     pulse_data = data[data['pulse_number'] == pulse_num]
     rest_data = pulse_data[pulse_data['I/mA'] == 0].copy()
 
+    r1s, r1l = resolve_window(rest_data, window_mode, window_start, window_end)
+    # actual points the window selects (clamped to the data that exists)
+    n_points = max(0, min(r1l, len(rest_data) - r1s)) if len(rest_data) else 0
+
     # len(rest_data) < r1s + r1l alone doesn't catch len(rest_data) == 0 when
-    # r1s + r1l <= 0 (e.g. a saved r1s/r1l of 0). An empty rest_data happens
-    # for real — e.g. the last pulse in a file whose recording ends before
-    # the next ICI interruption, which assign_valid_pulses still counts as
-    # "valid" since it only checks rest_duration <= max_rest, not > 0.
-    if len(rest_data) == 0 or len(rest_data) < r1s + r1l:
-        return {'pulse': pulse_num, 'r2': np.nan, 'slope': np.nan, 'intercept': np.nan, 'cov': None, 'V0': np.nan}
-    
+    # r1s + r1l <= 0 (e.g. a degenerate window). An empty rest_data happens for
+    # real — e.g. the last pulse in a file whose recording ends before the next
+    # ICI interruption, which assign_valid_pulses still counts as "valid".
+    if len(rest_data) == 0 or r1l <= 0 or len(rest_data) < r1s + r1l:
+        return {'pulse': pulse_num, 'r2': np.nan, 'slope': np.nan,
+                'intercept': np.nan, 'cov': None, 'V0': np.nan, 'n_points': n_points}
+
     V0 = get_V0(data, pulse_num)
     if np.isnan(V0):
-        return {'pulse': pulse_num, 'r2': np.nan, 'slope': np.nan, 'intercept': np.nan, 'cov': None, 'V0': V0}
-    
+        return {'pulse': pulse_num, 'r2': np.nan, 'slope': np.nan,
+                'intercept': np.nan, 'cov': None, 'V0': V0, 'n_points': n_points}
+
     rest_data['ΔV'] = rest_data['E/V'] - V0
     rest_data['sqrt_time'] = np.sqrt(rest_data['t/s'].values - rest_data['t/s'].values[0])
-    
+
     result = compute_single_pulse_regression(rest_data, r1s, r1l)
     result['pulse'] = pulse_num
     result['V0'] = V0
-    
+    result['n_points'] = n_points
+
     return result
 
 def compute_R_k(data, pulse_numbers, regression_results):
@@ -250,7 +278,8 @@ def compute_R_k(data, pulse_numbers, regression_results):
     
     return voltages, (np.array(R_vals), np.array(R_errs)), (np.array(k_vals), np.array(k_errs))
 
-def compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, mass_mg=0):
+def compute_R_k_for_cycle(df_raw, cycle_num, phase, window_mode=DEFAULT_WINDOW_MODE,
+                          window_start=None, window_end=None, saved_params=None, mass_mg=0):
     """Extract internal resistance R and diffusion coefficient k for one half-cycle.
 
     Runs the full ICI pipeline on a single cycle/phase: classifies the phase,
@@ -267,13 +296,17 @@ def compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT
         Cycle number to analyze.
     phase : {'charge', 'discharge'}
         Which half-cycle to analyze.
-    r1s, r1l : int, optional
-        Regression window as sample indices into each pulse's rest period:
-        start offset ``r1s`` and length ``r1l`` (defaults 2 and 10). Ignored for
-        a pulse whose window is overridden in ``saved_params``.
+    window_mode : {'index', 'time'}, optional
+        How the default regression window is specified (default ``'index'``).
+        'index' → 1-based inclusive sample positions; 'time' → seconds.
+    window_start, window_end : number or None, optional
+        The default window bounds in the unit implied by ``window_mode``
+        (``None`` → that mode's module default: index 2–10 or time 0.1–1.0 s).
+        Ignored for a pulse whose window is overridden in ``saved_params``.
     saved_params : dict, optional
         Per-pulse window overrides keyed by ``"{cycle}_{phase}_{pulse}"``, each
-        mapping to ``{'r1s': int, 'r1l': int}`` (the GUI's hand-tuned fits).
+        mapping to ``{'mode': str, 'start': num, 'end': num}`` (the GUI's
+        hand-tuned fits). Missing keys fall back to the default window.
     mass_mg : float, optional
         Active-material mass in mg, used only for the specific-capacity axis.
         ``0`` (default) leaves specific capacity unscaled.
@@ -291,6 +324,9 @@ def compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT
         - ``'r2'`` : R² of each ΔV-vs-√t fit
         - ``'capacity'``, ``'specific_capacity'`` : capacity (mAh) and, when
           ``mass_mg`` > 0, specific capacity (mAh/g) at each pulse
+        - ``'window_mode'``, ``'window_start'``, ``'window_end'`` : the window
+          applied to each pulse (in its own unit), and ``'n_points'`` : how many
+          samples that window selected
 
     Notes
     -----
@@ -323,22 +359,30 @@ def compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT
         return None
     
     regression_results = []
-    
+    win_modes, win_starts, win_ends = [], [], []
+
     for pulse_num in pulse_nums:
+        use_mode, use_start, use_end = window_mode, window_start, window_end
         if saved_params:
-            key = f"{cycle_num}_{phase}_{pulse_num}"
-            if key in saved_params:
-                use_r1s = saved_params[key]['r1s']
-                use_r1l = saved_params[key]['r1l']
-            else:
-                use_r1s = r1s
-                use_r1l = r1l
-        else:
-            use_r1s = r1s
-            use_r1l = r1l
-        
-        result = compute_regression_with_covariance(phase_data, pulse_num, use_r1s, use_r1l)
+            sp = saved_params.get(f"{cycle_num}_{phase}_{pulse_num}")
+            if sp and 'mode' in sp:                      # new format: {mode,start,end}
+                use_mode = sp.get('mode', window_mode)
+                use_start = sp.get('start', window_start)
+                use_end = sp.get('end', window_end)
+            elif sp and 'r1s' in sp:                     # legacy: 0-based {r1s, r1l}
+                use_mode = 'index'                       # -> 1-based inclusive
+                use_start = sp['r1s'] + 1
+                use_end = sp['r1s'] + sp['r1l']
+
+        result = compute_regression_with_covariance(phase_data, pulse_num,
+                                                     use_mode, use_start, use_end)
         regression_results.append(result)
+
+        # display values for the export (fill the mode's default when None)
+        disp_start, disp_end = _window_defaults(use_mode, use_start, use_end)
+        win_modes.append(use_mode)
+        win_starts.append(disp_start)
+        win_ends.append(disp_end)
     
     voltages, (R_vals, R_errs), (k_vals, k_errs) = compute_R_k(phase_data, pulse_nums, regression_results)
 
@@ -361,10 +405,15 @@ def compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s=DEFAULT_R1S, r1l=DEFAULT
         'pulse_nums': pulse_nums,
         'r2': [result['r2'] for result in regression_results],
         'capacity': capacity_vals,
-        'specific_capacity': specific_capacity_vals
+        'specific_capacity': specific_capacity_vals,
+        'window_mode': win_modes,
+        'window_start': win_starts,
+        'window_end': win_ends,
+        'n_points': [result.get('n_points') for result in regression_results],
     }
 
-def compute_R_k_for_cycles(df_raw, cycle_nums, phase, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, mass_mg=0):
+def compute_R_k_for_cycles(df_raw, cycle_nums, phase, window_mode=DEFAULT_WINDOW_MODE,
+                           window_start=None, window_end=None, saved_params=None, mass_mg=0):
     """Run :func:`compute_R_k_for_cycle` over several cycles.
 
     Parameters
@@ -375,7 +424,7 @@ def compute_R_k_for_cycles(df_raw, cycle_nums, phase, r1s=DEFAULT_R1S, r1l=DEFAU
         Cycles to analyze.
     phase : {'charge', 'discharge'}
         Half-cycle to analyze.
-    r1s, r1l, saved_params, mass_mg
+    window_mode, window_start, window_end, saved_params, mass_mg
         Passed through unchanged to :func:`compute_R_k_for_cycle`.
 
     Returns
@@ -387,20 +436,25 @@ def compute_R_k_for_cycles(df_raw, cycle_nums, phase, r1s=DEFAULT_R1S, r1l=DEFAU
     results = []
 
     for cycle_num in cycle_nums:
-        result = compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s, r1l, saved_params, mass_mg)
+        result = compute_R_k_for_cycle(df_raw, cycle_num, phase, window_mode,
+                                       window_start, window_end, saved_params, mass_mg)
         if result:
             result['cycle'] = cycle_num
             results.append(result)
 
     return results
 
-def export_R_k_results(df_raw, cycle_nums, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, saved_params=None, output_folder="exports", filename_prefix="", mass_mg=0):
+def export_R_k_results(df_raw, cycle_nums, window_mode=DEFAULT_WINDOW_MODE,
+                       window_start=None, window_end=None, saved_params=None,
+                       output_folder="exports", filename_prefix="", mass_mg=0):
     """Compute R/k for the given cycles and write one CSV per phase.
 
     Runs the full R/k pipeline for every cycle in both phases and writes
     ``{prefix}R_k_results_charge.csv`` and ``..._discharge.csv`` into
     ``output_folder`` (created if needed). Each row is one pulse, with cycle,
-    pulse number, voltage, capacity, specific capacity, R, R_err, k, k_err and R².
+    pulse number, voltage, capacity, specific capacity, R, R_err, k, k_err, R²,
+    and the regression window used (``Window_Mode``, ``Window_Start``,
+    ``Window_End``, ``N_points``) so each row is self-describing.
 
     Parameters
     ----------
@@ -408,7 +462,7 @@ def export_R_k_results(df_raw, cycle_nums, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, sav
         Standardized data.
     cycle_nums : iterable of int
         Cycles to export.
-    r1s, r1l, saved_params, mass_mg
+    window_mode, window_start, window_end, saved_params, mass_mg
         Passed through unchanged to :func:`compute_R_k_for_cycle`.
     output_folder : str, optional
         Destination directory (default ``"exports"``).
@@ -434,7 +488,8 @@ def export_R_k_results(df_raw, cycle_nums, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, sav
         all_data = []
 
         for cycle_num in cycle_nums:
-            result = compute_R_k_for_cycle(df_raw, cycle_num, phase, r1s, r1l, saved_params, mass_mg)
+            result = compute_R_k_for_cycle(df_raw, cycle_num, phase, window_mode,
+                                           window_start, window_end, saved_params, mass_mg)
 
             if result:
                 for i in range(len(result['voltages'])):
@@ -448,7 +503,11 @@ def export_R_k_results(df_raw, cycle_nums, r1s=DEFAULT_R1S, r1l=DEFAULT_R1L, sav
                         'R_err (Ohm)': result['R_err'][i],
                         'k (Ohm·s^0.5)': result['k'][i],
                         'k_err (Ohm·s^0.5)': result['k_err'][i],
-                        'R2': result['r2'][i]
+                        'R2': result['r2'][i],
+                        'Window_Mode': result['window_mode'][i],
+                        'Window_Start': result['window_start'][i],
+                        'Window_End': result['window_end'][i],
+                        'N_points': result['n_points'][i],
                     })
 
         if all_data:

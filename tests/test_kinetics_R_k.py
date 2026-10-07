@@ -20,7 +20,9 @@ def _synthetic_charge_cycle():
 
 def test_compute_R_k_for_cycle_returns_finite_R_k():
     df = _synthetic_charge_cycle()
-    result = compute_R_k_for_cycle(df, cycle_num=1, phase="charge", r1s=0, r1l=4)
+    # window: index mode, 1-based inclusive points 1-4 (= 0-based [0:4], 4 pts)
+    result = compute_R_k_for_cycle(df, cycle_num=1, phase="charge",
+                                   window_mode="index", window_start=1, window_end=4)
     assert result is not None
     assert [int(p) for p in result["pulse_nums"]] == [1]
     assert len(result["R"]) == 1 and len(result["k"]) == 1
@@ -38,6 +40,7 @@ def test_compute_R_k_for_cycle_none_cases():
 
 def test_compute_R_k_for_cycles_wraps_cycle():
     df = _synthetic_charge_cycle()
-    results = compute_R_k_for_cycles(df, [1], "charge", r1s=0, r1l=4)
+    results = compute_R_k_for_cycles(df, [1], "charge",
+                                     window_mode="index", window_start=1, window_end=4)
     assert len(results) == 1
     assert results[0]["cycle"] == 1

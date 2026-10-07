@@ -1212,6 +1212,14 @@ class KineticsTab:
         that file has no mass on record yet."""
         return self.shared_data.get('file_mass_mg', {}).get(fname, 0.0)
 
+    def _get_regression_window(self):
+        """Return the (mode, start, end) regression window chosen on the
+        Regression tab (shared via shared_data['regression_window']), falling
+        back to the module default (index 2-10) when none has been set."""
+        win = self.shared_data.get('regression_window', {})
+        return (win.get('mode', ka.DEFAULT_WINDOW_MODE),
+                win.get('start'), win.get('end'))
+
     def parse_and_validate_cycles(self):
         """Parse cycle input and validate"""
         input_str = self.cycle_entry.get()
@@ -1376,7 +1384,7 @@ class KineticsTab:
 
             # --- CHARGE ---
             charge_results = ka.compute_R_k_for_cycles(
-                rec['df_raw'], selected_cycles, 'charge', ka.DEFAULT_R1S, ka.DEFAULT_R1L, saved_params, mass_mg)
+                rec['df_raw'], selected_cycles, 'charge', *self._get_regression_window(), saved_params, mass_mg)
 
             for idx, result in enumerate(charge_results):
                 x_vals   = result[x_key]
@@ -1413,7 +1421,7 @@ class KineticsTab:
 
             # --- DISCHARGE ---
             discharge_results = ka.compute_R_k_for_cycles(
-                rec['df_raw'], selected_cycles, 'discharge', ka.DEFAULT_R1S, ka.DEFAULT_R1L, saved_params, mass_mg)
+                rec['df_raw'], selected_cycles, 'discharge', *self._get_regression_window(), saved_params, mass_mg)
 
             for idx, result in enumerate(discharge_results):
                 x_vals   = result[x_key]
@@ -1531,8 +1539,7 @@ class KineticsTab:
             self.df_raw,
             selected_cycles,
             'charge',
-            ka.DEFAULT_R1S,
-            ka.DEFAULT_R1L,
+            *self._get_regression_window(),
             saved_params,
             mass_mg
         )
@@ -1761,8 +1768,7 @@ class KineticsTab:
             self.df_raw,
             selected_cycles,
             'discharge',
-            ka.DEFAULT_R1S,
-            ka.DEFAULT_R1L,
+            *self._get_regression_window(),
             saved_params,
             mass_mg
         )
@@ -1992,7 +1998,7 @@ class KineticsTab:
             mass_mg = self._get_mass_for_file(self.shared_data.get('active_file'))
 
             success = ka.export_R_k_results(
-                self.df_raw, selected_cycles, ka.DEFAULT_R1S, ka.DEFAULT_R1L,
+                self.df_raw, selected_cycles, *self._get_regression_window(),
                 saved_params, output_folder, filename_prefix, mass_mg)
             
             if success:
@@ -2074,7 +2080,7 @@ class KineticsTab:
 
             try:
                 success = ka.export_R_k_results(
-                    rec['df_raw'], selected_cycles, ka.DEFAULT_R1S, ka.DEFAULT_R1L,
+                    rec['df_raw'], selected_cycles, *self._get_regression_window(),
                     saved_params, output_folder, filename_prefix, mass_mg)
                 if success:
                     exported.append(filename_prefix)
