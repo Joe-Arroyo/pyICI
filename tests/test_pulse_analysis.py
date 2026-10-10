@@ -46,3 +46,18 @@ def test_single_source_of_truth():
     assert pa.compute_V0_t0 is ra.compute_V0_t0
     # phase classification: regression_analyzer re-exports phase_classifier's
     assert ra.classify_charge_discharge is pc.classify_charge_discharge
+
+def test_max_rest_duration_single_source():
+    """F3 guard: MAX_REST_DURATION is defined once (in phase_classifier) and
+    imported everywhere. Every module must reference the SAME object -- a
+    re-introduced `MAX_REST_DURATION = 1800` copy would be a distinct object
+    and fail the identity check, catching the 4-file drift this fixes."""
+    import analysis.phase_classifier as pc
+    import analysis.data_loader as dl
+    import analysis.regression_analyzer as ra
+    import analysis.pulse_analyzer as pa
+    import analysis.kinetic_analyzer as ka
+
+    assert pc.MAX_REST_DURATION == 1800
+    for mod in (dl, ra, pa, ka):
+        assert mod.MAX_REST_DURATION is pc.MAX_REST_DURATION

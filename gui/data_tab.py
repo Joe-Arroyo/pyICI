@@ -222,26 +222,22 @@ class DataTab:
         params_frame = ttk.LabelFrame(controls_row_frame, text="Analysis Parameters", padding=5)
         params_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(5, 0))
         
-        ttk.Label(params_frame, text="Max Rest (s):").grid(row=0, column=0, sticky=tk.W, padx=2, pady=1)
-        self.max_rest_var = tk.StringVar(value=str(data_loader.MAX_REST_DURATION))
-        ttk.Entry(params_frame, textvariable=self.max_rest_var, width=8).grid(row=0, column=1, padx=2, pady=1)
-        
-        ttk.Label(params_frame, text="Current (mA):").grid(row=1, column=0, sticky=tk.W, padx=2, pady=1)
+        ttk.Label(params_frame, text="Current (mA):").grid(row=0, column=0, sticky=tk.W, padx=2, pady=1)
         self.current_threshold_var = tk.StringVar(value=str(data_loader.CURRENT_THRESHOLD))
-        ttk.Entry(params_frame, textvariable=self.current_threshold_var, width=8).grid(row=1, column=1, padx=2, pady=1)
+        ttk.Entry(params_frame, textvariable=self.current_threshold_var, width=8).grid(row=0, column=1, padx=2, pady=1)
 
         # Cycle detection (used only for files without a cycle-number column)
-        ttk.Label(params_frame, text="Cycles:").grid(row=2, column=0, sticky=tk.W, padx=2, pady=1)
+        ttk.Label(params_frame, text="Cycles:").grid(row=1, column=0, sticky=tk.W, padx=2, pady=1)
         self.cycle_mode_var = tk.StringVar(value=getattr(data_loader, 'CYCLE_DETECTION_MODE', 'auto'))
         ttk.Combobox(params_frame, textvariable=self.cycle_mode_var,
                      values=['auto', 'file'], width=7,
-                     state='readonly').grid(row=2, column=1, padx=2, pady=1)
+                     state='readonly').grid(row=1, column=1, padx=2, pady=1)
 
         # Help text (smaller)
         help_label = ttk.Label(params_frame,
                                text="ℹ️ auto = detect cycles from current\n(3-column files only)",
                                font=('Arial', 7), foreground='gray')
-        help_label.grid(row=3, column=0, columnspan=2, pady=2)
+        help_label.grid(row=2, column=0, columnspan=2, pady=2)
 
         # 5. Active File Indicator (RIGHT of Analysis Parameters)
         active_file_frame = ttk.LabelFrame(controls_row_frame, text="Active File", padding=5)
@@ -357,7 +353,6 @@ class DataTab:
             
                         # Read parameters from the GUI
             try:
-                float(self.max_rest_var.get())  # validated; kept for the UI field
                 current_threshold = float(self.current_threshold_var.get())
             except ValueError:
                 messagebox.showwarning("Invalid Parameters",

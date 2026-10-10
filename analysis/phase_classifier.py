@@ -9,10 +9,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# =============================================================================
 # CONFIGURATION
 # =============================================================================
 
+# Canonical definition -- the single source of truth for the maximum valid rest
+# duration (seconds). Other analysis modules import this value from here; do not
+# redefine it elsewhere.
 MAX_REST_DURATION = 1800  # seconds
 
 # =============================================================================

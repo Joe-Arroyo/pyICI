@@ -12,11 +12,12 @@ import pandas as pd
 import numpy as np
 from collections import namedtuple
 
+from analysis.phase_classifier import MAX_REST_DURATION  # single source of truth
+
 # =============================================================================
 # CONFIGURATION (defaults; the GUI passes its own values as arguments)
 # =============================================================================
 
-MAX_REST_DURATION = 1800  # seconds
 CURRENT_THRESHOLD = 1.0   # mA
 
 # Cycle identification for files WITHOUT a cycle-number column:
