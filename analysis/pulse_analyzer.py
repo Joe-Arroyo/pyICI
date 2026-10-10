@@ -18,12 +18,8 @@ from collections import namedtuple
 # the R/k pipeline uses). Imported here so the Pulse tab segments pulses exactly
 # as the exported R/k results do.
 from analysis.regression_analyzer import assign_valid_pulses, compute_V0_t0
+from analysis.phase_classifier import MAX_REST_DURATION  # single source of truth
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
-
-MAX_REST_DURATION = 1800  # seconds
 
 # =============================================================================
 # RESULT TYPE

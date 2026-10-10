@@ -21,7 +21,7 @@ from collections import namedtuple
 # (and thereby re-exported) here so existing callers that do
 # `from analysis.regression_analyzer import classify_charge_discharge`
 # keep working, now against the one shared implementation.
-from analysis.phase_classifier import classify_charge_discharge
+from analysis.phase_classifier import classify_charge_discharge, MAX_REST_DURATION
 
 # =============================================================================
 # CONFIGURATION
@@ -30,7 +30,7 @@ from analysis.phase_classifier import classify_charge_discharge
 # Regression parameters
 DEFAULT_R1_START = 2   # R1S - Short regression window start (0-based, legacy)
 DEFAULT_R1_LENGTH = 10  # R1L - Long regression window length (legacy)
-MAX_REST_DURATION = 1800  # seconds
+# MAX_REST_DURATION imported from phase_classifier above (single source of truth)
 ZERO_THRESHOLD = 1e-5
 
 # Regression window (F11). The fit window is specified as a *mode* plus two
