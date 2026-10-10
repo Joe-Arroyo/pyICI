@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Data files saved in non-UTF-8 text encodings (e.g. Windows-1252 / Latin-1, as
+  exported by some cyclers) now load correctly instead of failing with a decoding
+  error — the loader detects the file's encoding automatically.
+
+### Removed
+- Removed the non-functional "Max Rest (s)" field from the Data tab. It was shown
+  and validated but never actually applied; the maximum valid rest duration
+  stays fixed at 1800 s.
+
+### Changed
+- Internal: the maximum-rest-duration constant now has a single definition shared
+  across the analysis modules (previously duplicated in four files). No change to
+  results.
+
 ## [1.4.0] - 2026-10-07
 
 ### Added

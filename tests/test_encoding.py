@@ -6,8 +6,6 @@ that is byte 0xB5, which is NOT valid UTF-8 on its own, so a UTF-8-only reader
 raises UnicodeDecodeError on this file.
 """
 import pandas as pd
-import pytest
-
 from analysis import data_loader as dl
 
 _HEADER = "t/s\tE/V\tI/\u00b5A"          # µ = U+00B5
