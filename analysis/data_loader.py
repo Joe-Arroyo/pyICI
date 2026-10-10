@@ -41,13 +41,40 @@ DataLoadResult = namedtuple(
 # DATA LOADING HELPER FUNCTIONS
 # =============================================================================
 
-def inspect_data_file(file_path):
-    """Inspect the data file to determine its delimiter.
+# Data files can be saved in different text encodings. We try the most likely
+# ones in order and keep the first that reads the file without errors: UTF-8
+# (today's standard) first, then the older Windows encodings some cyclers still
+# use. latin-1 is last because it can read any file, so a file never fails to
+# open just because of its encoding.
+_ENCODINGS = ('utf-8-sig', 'utf-8', 'cp1252', 'latin-1')
 
-    Returns (delimiter, first_lines) or (None, []) on failure.
+
+def _detect_encoding(file_path):
+    """Return the first encoding from ``_ENCODINGS`` that reads the whole file
+    without an error.
+
+    Data files are usually UTF-8, but some cyclers save them in a Windows
+    encoding; assuming UTF-8 would make those fail to open. latin-1 reads any
+    file, so this always returns a usable encoding.
+    """
+    for enc in _ENCODINGS:
+        try:
+            with open(file_path, 'r', encoding=enc) as f:
+                f.read()
+            return enc
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+    return 'latin-1'
+
+
+def inspect_data_file(file_path):
+    """Inspect the data file to determine its delimiter and text encoding.
+
+    Returns (delimiter, first_lines, encoding) or (None, [], 'utf-8') on failure.
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        encoding = _detect_encoding(file_path)
+        with open(file_path, 'r', encoding=encoding) as f:
             lines = [f.readline().strip() for _ in range(10)]
 
         first_data_line = lines[1] if len(lines) > 1 else lines[0]
@@ -58,16 +85,16 @@ def inspect_data_file(file_path):
         else:
             delimiter = None
 
-        return delimiter, lines
+        return delimiter, lines, encoding
 
     except Exception:
-        return None, []
+        return None, [], 'utf-8'
 
-def _is_headerless(file_path, delimiter):
+def _is_headerless(file_path, delimiter, encoding='utf-8'):
     """Return True when the file's first row is entirely numeric, i.e. there is
     no header row (the first line is already data)."""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, 'r', encoding=encoding) as f:
             first = f.readline().strip()
     except Exception:
         return False
@@ -81,28 +108,28 @@ def _is_headerless(file_path, delimiter):
             return False   # a non-numeric token -> this row is a header
     return True            # all tokens numeric -> no header row
 
-def _read_table(file_path, delimiter):
+def _read_table(file_path, delimiter, encoding='utf-8'):
     """Read a delimited file, auto-handling a missing header row.
 
     If the first row is all-numeric the file is treated as header-less: every
     row is kept as data and generic column names (col1, col2, ...) are assigned
     so nothing is lost to being mistaken for a header."""
-    if _is_headerless(file_path, delimiter):
-        df = pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8', header=None)
+    if _is_headerless(file_path, delimiter, encoding):
+        df = pd.read_csv(file_path, delimiter=delimiter, encoding=encoding, header=None)
         df.columns = [f'col{i + 1}' for i in range(df.shape[1])]
     else:
-        df = pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8')
+        df = pd.read_csv(file_path, delimiter=delimiter, encoding=encoding)
     return df
 
 def load_data_flexible(file_path):
     """Load data with flexible format detection. Returns a DataFrame or None."""
-    delimiter, sample_lines = inspect_data_file(file_path)
+    delimiter, sample_lines, encoding = inspect_data_file(file_path)
 
     if delimiter is None:
         return None
 
     try:
-        return _read_table(file_path, delimiter)
+        return _read_table(file_path, delimiter, encoding)
     except Exception:
         return None
 
@@ -181,11 +208,11 @@ def standardize_columns_by_position(df, data_format):
 def peek_columns(file_path):
     """Return the usable column names of a data file (after dropping unnamed /
     all-NaN columns), or [] on failure. Used by the GUI column-mapping dialog."""
-    delimiter, _ = inspect_data_file(file_path)
+    delimiter, _, encoding = inspect_data_file(file_path)
     if delimiter is None:
         return []
     try:
-        df = _read_table(file_path, delimiter)
+        df = _read_table(file_path, delimiter, encoding)
     except Exception:
         return []
     drop = [c for c in df.columns
