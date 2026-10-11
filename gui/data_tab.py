@@ -16,6 +16,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from gui.components.plot_panel import PlotPanel
 from matplotlib.figure import Figure
 import pandas as pd
 import numpy as np
@@ -256,19 +257,13 @@ class DataTab:
         plot_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         # Create matplotlib figure with proper backend for GUI
-        self.fig = Figure(figsize=(12, 8))
+        self.plot_panel = PlotPanel(plot_frame, figsize=(12, 8))
+        self.plot_panel.pack(fill=tk.BOTH, expand=True)
+        self.fig = self.plot_panel.figure
+        self.canvas = self.plot_panel.canvas
+        self.toolbar = self.plot_panel.toolbar
         self.ax1 = self.fig.add_subplot(211)  # Top plot: Voltage
         self.ax2 = self.fig.add_subplot(212)  # Bottom plot: Current
-        
-        self.canvas = FigureCanvasTkAgg(self.fig, plot_frame)
-        
-        # Add navigation toolbar for zoom/pan functionality
-        self.toolbar = NavigationToolbar2Tk(self.canvas, plot_frame)
-        self.toolbar.update()
-        
-        # Pack in correct order: toolbar at bottom, canvas fills remaining space
-        self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
                 
         # Status bar
         self.status_label = ttk.Label(self.parent, text="Ready - Select a data file to begin", 

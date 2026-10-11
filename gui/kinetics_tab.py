@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from gui.components.plot_panel import PlotPanel
 import os
 from matplotlib.lines import Line2D
 
@@ -258,21 +259,14 @@ class KineticsTab:
         charge_plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         
         # FIXED: Reserve 15% space on right for legend/colorbar with subplots_adjust
-        self.charge_fig = Figure(figsize=(6, 8))
-        # FIX: Increased bottom margin to ensure x-axis labels fit
+        self.charge_panel = PlotPanel(charge_plot_frame, figsize=(6, 8))
+        self.charge_panel.pack(fill=tk.BOTH, expand=True)
+        self.charge_fig = self.charge_panel.figure
+        self.charge_canvas = self.charge_panel.canvas
+        self.charge_toolbar = self.charge_panel.toolbar
         self.charge_fig.subplots_adjust(left=0.15, right=0.85, top=0.95, bottom=0.10, hspace=0.3)
         self.charge_ax_R = self.charge_fig.add_subplot(211)
         self.charge_ax_k = self.charge_fig.add_subplot(212)
-        
-        self.charge_canvas = FigureCanvasTkAgg(self.charge_fig, charge_plot_frame)
-
-        # Add navigation toolbar for zoom/pan
-        self.charge_toolbar = NavigationToolbar2Tk(self.charge_canvas, charge_plot_frame)
-        self.charge_toolbar.update()
-
-        # Pack toolbar at bottom, canvas fills remaining space
-        self.charge_toolbar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.charge_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         
         # ==============================
         # DISCHARGE SECTION (RIGHT SIDE)
@@ -379,21 +373,14 @@ class KineticsTab:
         discharge_plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         
         # FIXED: Reserve 15% space on right for legend/colorbar with subplots_adjust
-        self.discharge_fig = Figure(figsize=(6, 8))
-        # FIX: Increased bottom margin to ensure x-axis labels fit
+        self.discharge_panel = PlotPanel(discharge_plot_frame, figsize=(6, 8))
+        self.discharge_panel.pack(fill=tk.BOTH, expand=True)
+        self.discharge_fig = self.discharge_panel.figure
+        self.discharge_canvas = self.discharge_panel.canvas
+        self.discharge_toolbar = self.discharge_panel.toolbar
         self.discharge_fig.subplots_adjust(left=0.15, right=0.85, top=0.95, bottom=0.10, hspace=0.3)
         self.discharge_ax_R = self.discharge_fig.add_subplot(211)
         self.discharge_ax_k = self.discharge_fig.add_subplot(212)
-        
-        self.discharge_canvas = FigureCanvasTkAgg(self.discharge_fig, discharge_plot_frame)
-
-        # Add navigation toolbar for zoom/pan
-        self.discharge_toolbar = NavigationToolbar2Tk(self.discharge_canvas, discharge_plot_frame)
-        self.discharge_toolbar.update()
-
-        # Pack toolbar at bottom, canvas fills remaining space
-        self.discharge_toolbar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.discharge_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         
         # Status bar
         self.bottom_status = ttk.Label(self.parent, text="Ready", relief=tk.SUNKEN, anchor=tk.W)
