@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data files saved in non-UTF-8 text encodings (e.g. Windows-1252 / Latin-1, as
   exported by some cyclers) now load correctly instead of failing with a decoding
   error — the loader detects the file's encoding automatically.
+- Exporting a plot no longer strips the titles from the on-screen figure. (The
+  Classification tab's figure export previously blanked the plot titles without
+  restoring them.)
 
 ### Removed
 - Removed the non-functional "Max Rest (s)" field from the Data tab. It was shown
@@ -21,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Internal: the maximum-rest-duration constant now has a single definition shared
   across the analysis modules (previously duplicated in four files). No change to
   results.
+- Internal (no change to results or exported values): began the GUI modernization.
+  The matplotlib plumbing and figure-export code that had been copy-pasted across
+  all five tabs were consolidated into two shared components
+  (`gui/components/plot_panel.py` and `gui/components/export_helper.py`), and the
+  status bar now refreshes when the data changes (event-driven) instead of polling
+  on a 1-second timer. `customtkinter` was added as a dependency as groundwork for
+  the forthcoming interface restyle.
 
 ## [1.4.0] - 2026-10-07
 
