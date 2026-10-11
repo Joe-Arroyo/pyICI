@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from gui.components.plot_panel import PlotPanel
 from matplotlib.figure import Figure
 import pandas as pd
 import numpy as np
@@ -256,18 +257,12 @@ class ClassificationTab:
         plot_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Create matplotlib figure
-        self.phase_fig = Figure(figsize=(12, 8))
+        self.phase_panel = PlotPanel(plot_frame, figsize=(12, 8))
+        self.phase_panel.pack(fill=tk.BOTH, expand=True)
+        self.phase_fig = self.phase_panel.figure
+        self.phase_canvas = self.phase_panel.canvas
+        self.phase_toolbar = self.phase_panel.toolbar
         self.phase_ax = self.phase_fig.add_subplot(111)
-        
-        self.phase_canvas = FigureCanvasTkAgg(self.phase_fig, plot_frame)
-        
-        # Add navigation toolbar for zoom/pan functionality
-        self.phase_toolbar = NavigationToolbar2Tk(self.phase_canvas, plot_frame)
-        self.phase_toolbar.update()
-        
-        # Pack in correct order: toolbar at bottom, canvas fills remaining space
-        self.phase_toolbar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.phase_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
     
     def create_capacity_tab(self):
         """Create Capacity vs Voltage tab (new functionality)"""
@@ -436,18 +431,12 @@ class ClassificationTab:
         plot_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Create matplotlib figure
-        self.capacity_fig = Figure(figsize=(12, 8))
+        self.capacity_panel = PlotPanel(plot_frame, figsize=(12, 8))
+        self.capacity_panel.pack(fill=tk.BOTH, expand=True)
+        self.capacity_fig = self.capacity_panel.figure
+        self.capacity_canvas = self.capacity_panel.canvas
+        self.capacity_toolbar = self.capacity_panel.toolbar
         self.capacity_ax = self.capacity_fig.add_subplot(111)
-        
-        self.capacity_canvas = FigureCanvasTkAgg(self.capacity_fig, plot_frame)
-        
-        # Add navigation toolbar
-        self.capacity_toolbar = NavigationToolbar2Tk(self.capacity_canvas, plot_frame)
-        self.capacity_toolbar.update()
-        
-        # Pack in correct order
-        self.capacity_toolbar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.capacity_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         self.notebook.bind('<<NotebookTabChanged>>', self._on_tab_changed)
 
