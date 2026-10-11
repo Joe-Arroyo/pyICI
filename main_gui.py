@@ -21,6 +21,33 @@ from gui.pulse_analysis_tab import PulseTab
 from gui.regression_tab import RegressionTab  # NEW: Tab 4
 from gui.kinetics_tab import KineticsTab      # NEW: Tab 5
 
+class _ObservableDict(dict):
+    """A dict that notifies a listener whenever a "watched" key is reassigned.
+
+    Lets the status bar refresh the instant a tab writes new data into the
+    shared-data dict, replacing the old 1-second polling loop (finding F8).
+    Only ``d[key] = value`` assignment of a watched key fires the listener;
+    in-place mutation of a value and ``dict.update`` do not, which is fine
+    here because every data load reassigns df_raw / cycle_list / filename
+    together.
+    """
+
+    _WATCHED = ("df_raw", "cycle_list", "filename", "loaded_files")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._listener = None
+
+    def set_listener(self, listener):
+        """Register a zero-argument callable to run after a watched write."""
+        self._listener = listener
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        if self._listener is not None and key in self._WATCHED:
+            self._listener()
+
+
 class Complete5TabGUI:
     """Main application with all 5 analysis tabs"""
     
@@ -29,8 +56,9 @@ class Complete5TabGUI:
         self.root.title("ICI Battery Analysis - Complete System (5 Tabs)")
         self.root.geometry("1600x1000")
         
-        # Shared data manager - USE DICTIONARY
-        self.shared_data = {
+        # Shared data manager - USE DICTIONARY (observable: writes to watched
+        # keys refresh the status bar — finding F8, replaces polling)
+        self.shared_data = _ObservableDict({
             'df_raw': None,
             'cycle_list': [],
             'ici_starts': {},
@@ -52,7 +80,7 @@ class Complete5TabGUI:
                 '#bcbd22',  # yellow-green
                 '#17becf',  # cyan
             ],
-        }
+        })
         
         # Create main interface
         self.create_interface()
@@ -124,8 +152,10 @@ class Complete5TabGUI:
         # Test controls at bottom
         self.create_test_controls()
         
-        # Start periodic status update
-        self.monitor_shared_data()
+        # Event-driven status bar: refresh whenever a tab writes new shared
+        # data (replaces the old 1-second polling loop — finding F8).
+        self.shared_data.set_listener(self.update_status_bar)
+        self.update_status_bar()
         
     def create_status_bar(self):
         """Create status bar"""
@@ -339,12 +369,6 @@ class Complete5TabGUI:
         print(status_text)
         messagebox.showinfo("Data Status", status_text)
     
-    def monitor_shared_data(self):
-        """Periodically check shared_data and update status bar"""
-        self.update_status_bar()
-        # Check every 1000ms (1 second)
-        self.root.after(1000, self.monitor_shared_data)
-
 def main():
     """Main entry point"""
     
