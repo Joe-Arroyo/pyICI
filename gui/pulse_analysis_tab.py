@@ -21,6 +21,8 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import os
 
+from gui.components.plot_panel import PlotPanel
+
 # Export function (following established pattern)
 def export_figure(fig, filepath, width_in=8, height_in=6, dpi=300):
     """Export figure with specified dimensions and DPI - NO TITLES"""
@@ -156,16 +158,13 @@ class PulseTab:
         plot_frame = ttk.LabelFrame(self.parent, text="Pulse Visualization", padding=5)
         plot_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        self.fig = Figure(figsize=(14, 10))
-        self.canvas = FigureCanvasTkAgg(self.fig, plot_frame)
-        
-        # Add navigation toolbar for zoom/pan functionality
-        self.toolbar = NavigationToolbar2Tk(self.canvas, plot_frame)
-        self.toolbar.update()
-        
-        # Pack in correct order: toolbar at bottom, canvas fills remaining space
-        self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # Shared embedded-plot panel (owns the Figure + canvas + toolbar).
+        self.plot_panel = PlotPanel(plot_frame, figsize=(14, 10))
+        self.plot_panel.pack(fill=tk.BOTH, expand=True)
+        # Aliases so the existing drawing/export code keeps working unchanged.
+        self.fig = self.plot_panel.figure
+        self.canvas = self.plot_panel.canvas
+        self.toolbar = self.plot_panel.toolbar
         
         # Status bar
         self.bottom_status = ttk.Label(self.parent, text="Ready | Load data to begin", relief=tk.SUNKEN)
