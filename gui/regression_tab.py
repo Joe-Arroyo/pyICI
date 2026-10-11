@@ -14,6 +14,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from gui.components.plot_panel import PlotPanel
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 import numpy as np
@@ -361,33 +362,29 @@ class RegressionTab:
         plot_frame = ttk.Frame(parent)
         plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        fig = Figure(figsize=(6, 8))
+        panel = PlotPanel(plot_frame, figsize=(6, 8))
+        panel.pack(fill=tk.BOTH, expand=True)
+        fig = panel.figure
+        canvas = panel.canvas
+        toolbar = panel.toolbar
         fig.subplots_adjust(hspace=0.4)
 
         if phase == "charge":
+            self.charge_panel = panel
             self.charge_fig = fig
+            self.charge_canvas = canvas
+            self.charge_toolbar = toolbar
             self.charge_ax1 = fig.add_subplot(211)
             self.charge_ax2 = fig.add_subplot(212)
         else:
+            self.discharge_panel = panel
             self.discharge_fig = fig
+            self.discharge_canvas = canvas
+            self.discharge_toolbar = toolbar
             self.discharge_ax1 = fig.add_subplot(211)
             self.discharge_ax2 = fig.add_subplot(212)
 
-        canvas = FigureCanvasTkAgg(fig, plot_frame)
-        toolbar = NavigationToolbar2Tk(canvas, plot_frame)
-        toolbar.update()
-
-        toolbar.pack(side=tk.BOTTOM, fill=tk.X)
-        canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
         canvas.draw()
-
-        if phase == "charge":
-            self.charge_canvas = canvas
-            self.charge_toolbar = toolbar
-        else:
-            self.discharge_canvas = canvas
-            self.discharge_toolbar = toolbar
 
     def create_multi_cycle_tab(self):
         """Create multi-cycle analysis tab with three-panel layout"""
@@ -523,18 +520,12 @@ class RegressionTab:
         plot_frame = ttk.Frame(self.multi_cycle_frame)
         plot_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        self.multi_fig = Figure(figsize=(12, 6))
+        self.multi_panel = PlotPanel(plot_frame, figsize=(12, 6))
+        self.multi_panel.pack(fill=tk.BOTH, expand=True)
+        self.multi_fig = self.multi_panel.figure
+        self.multi_canvas = self.multi_panel.canvas
+        self.multi_toolbar = self.multi_panel.toolbar
         self.multi_ax = self.multi_fig.add_subplot(111)
-
-        self.multi_canvas = FigureCanvasTkAgg(self.multi_fig, plot_frame)
-        
-        # Add navigation toolbar for zoom/pan
-        self.multi_toolbar = NavigationToolbar2Tk(self.multi_canvas, plot_frame)
-        self.multi_toolbar.update()
-
-        # Pack toolbar at bottom, canvas fills remaining space
-        self.multi_toolbar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.multi_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
 
         self.multi_canvas.draw()
