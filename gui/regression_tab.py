@@ -15,6 +15,7 @@ from tkinter import ttk, messagebox, filedialog
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from gui.components.plot_panel import PlotPanel
+from gui.components.export_helper import export_single_axis
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 import numpy as np
@@ -2191,45 +2192,11 @@ class RegressionTab:
                 self.discharge_canvas.draw()
 
     def export_single_axis(self, source_ax, filepath, width_in, height_in, dpi):
-        """Export single subplot as standalone figure"""
-        import matplotlib.pyplot as plt
-        
-        temp_fig, temp_ax = plt.subplots(figsize=(width_in, height_in))
-        
-        try:
-            # Copy plot elements
-            for line in source_ax.get_lines():
-                temp_ax.plot(line.get_xdata(), line.get_ydata(),
-                           color=line.get_color(), linewidth=line.get_linewidth(),
-                           linestyle=line.get_linestyle(), marker=line.get_marker(),
-                           markersize=line.get_markersize(), alpha=line.get_alpha(),
-                           label=line.get_label())
-            
-            # Copy scatter plots
-            for collection in source_ax.collections:
-                if hasattr(collection, 'get_offsets') and len(collection.get_offsets()) > 0:
-                    offsets = collection.get_offsets()
-                    colors = collection.get_facecolors()
-                    sizes = collection.get_sizes()
-                    temp_ax.scatter(offsets[:, 0], offsets[:, 1], 
-                                  c=colors, s=sizes, alpha=collection.get_alpha())
-            
-            # Copy formatting (NO TITLE)
-            temp_ax.set_xlabel(source_ax.get_xlabel())
-            temp_ax.set_ylabel(source_ax.get_ylabel())
-            temp_ax.set_xlim(source_ax.get_xlim())
-            temp_ax.set_ylim(source_ax.get_ylim())
-            temp_ax.grid(True, alpha=0.3)
-            
-            if source_ax.get_legend():
-                temp_ax.legend(loc='best')
-            
-            temp_fig.tight_layout()
-            temp_fig.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor='white')
-            messagebox.showinfo("Export", f"Plot exported:\n{filepath}")
-            
-        finally:
-            plt.close(temp_fig)
+        """Export a single subplot as a standalone figure (delegates to the
+        shared export_single_axis helper imported at module level)."""
+        export_single_axis(source_ax, filepath,
+                            width_in=width_in, height_in=height_in, dpi=dpi)
+        messagebox.showinfo("Export", f"Plot exported:\n{filepath}")
 
     def export_phase_plot(self, phase):
         """Export selected plot from charge or discharge analysis"""

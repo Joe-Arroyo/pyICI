@@ -18,25 +18,7 @@ import numpy as np
 import analysis.phase_classifier as phase_classifier
 import os
 
-def export_figure(fig, filepath, width_in=8, height_in=6, dpi=300):
-    """Simple figure export function"""
-    # Store original size
-    original_size = fig.get_size_inches()
-    original_titles = []
-    for ax in fig.axes:
-        original_titles.append(ax.get_title())
-        ax.set_title("")  # Remove title for export
-    
-    try:
-        # Set new size
-        fig.set_size_inches(width_in, height_in)
-        
-        # Save with tight layout
-        fig.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor='white')
-        
-    finally:
-        # Restore original size
-        fig.set_size_inches(original_size)
+from gui.components.export_helper import export_figure
 
 class ClassificationTab:
     def __init__(self, parent, shared_data):
