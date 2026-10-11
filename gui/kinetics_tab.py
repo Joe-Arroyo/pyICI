@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from gui.components.plot_panel import PlotPanel
+from gui.components.export_helper import export_figure
 import os
 from matplotlib.lines import Line2D
 
@@ -43,26 +44,6 @@ class KineticsTab:
         self.setup_ui()
         self.load_shared_data()
     
-    def export_figure(self, fig, filepath, width_in=8, height_in=6, dpi=300):
-        """Export figure to file with specified dimensions and DPI (no titles for clean export)"""
-        original_size = fig.get_size_inches()
-        
-        # Store original titles
-        original_titles = []
-        for ax in fig.get_axes():
-            original_titles.append(ax.get_title())
-            ax.set_title('')  # Remove title for clean export
-        
-        # Set new size
-        fig.set_size_inches(width_in, height_in)
-        
-        try:
-            fig.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor='white')
-        finally:
-            # Restore original titles and size AFTER saving
-            for ax, title in zip(fig.get_axes(), original_titles):
-                ax.set_title(title)
-            fig.set_size_inches(original_size)
     
     def setup_ui(self):
         """Create the UI layout"""
@@ -859,7 +840,7 @@ class KineticsTab:
 
             # Export the temporary figure
             temp_fig.tight_layout()
-            self.export_figure(temp_fig, filepath, export_width, height, dpi)
+            export_figure(temp_fig, filepath, export_width, height, dpi)
                   
             # Clean up
             plt.close(temp_fig)
@@ -936,7 +917,7 @@ class KineticsTab:
                 self.scale_plot_elements(ax, scale)
 
             # Export figure
-            self.export_figure(fig, filepath, width, height, dpi)
+            export_figure(fig, filepath, width, height, dpi)
             
             # Show success message
             messagebox.showinfo("Export Complete", 

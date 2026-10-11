@@ -27,28 +27,7 @@ import analysis.data_loader as data_loader
 # Import phase classifier for auto-classification
 from analysis.phase_classifier import classify_charge_discharge
 
-# INLINE EXPORT FUNCTION (no external dependency)
-def export_figure(fig, filepath, width_in=8, height_in=6, dpi=300):
-    """Export figure with specified dimensions and DPI - NO TITLES"""
-    original_size = fig.get_size_inches()
-    
-    # Store original titles
-    original_titles = []
-    for ax in fig.axes:
-        original_titles.append(ax.get_title())
-        ax.set_title("")  # Remove title for export
-    
-    try:
-        fig.set_size_inches(width_in, height_in)
-        fig.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor='white')
-        messagebox.showinfo("Export", f"Figure exported:\n{filepath}")
-    except Exception as e:
-        messagebox.showerror("Export Error", str(e))
-    finally:
-        # Restore original size and titles
-        fig.set_size_inches(original_size)
-        for ax, title in zip(fig.axes, original_titles):
-            ax.set_title(title)
+from gui.components.export_helper import export_figure
 
 class DataTab:
     def __init__(self, parent, shared_data):
@@ -300,6 +279,7 @@ class DataTab:
             )
             # Redraw canvas to restore any title changes
             self.canvas.draw()
+            messagebox.showinfo("Export", f"Figure exported:\n{filepath}")
             
         except Exception as e:
             messagebox.showerror("Export Error", str(e))

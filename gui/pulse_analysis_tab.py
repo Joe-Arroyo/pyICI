@@ -23,28 +23,7 @@ import os
 
 from gui.components.plot_panel import PlotPanel
 
-# Export function (following established pattern)
-def export_figure(fig, filepath, width_in=8, height_in=6, dpi=300):
-    """Export figure with specified dimensions and DPI - NO TITLES"""
-    original_size = fig.get_size_inches()
-    
-    # Store original titles
-    original_titles = []
-    for ax in fig.axes:
-        original_titles.append(ax.get_title())
-        ax.set_title("")  # Remove title for export
-    
-    try:
-        fig.set_size_inches(width_in, height_in)
-        fig.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor='white')
-        messagebox.showinfo("Export", f"Figure exported:\n{filepath}")
-    except Exception as e:
-        messagebox.showerror("Export Error", str(e))
-    finally:
-        # Restore original size and titles
-        fig.set_size_inches(original_size)
-        for ax, title in zip(fig.axes, original_titles):
-            ax.set_title(title)
+from gui.components.export_helper import export_figure, export_single_axis
 
 class PulseTab:
     """Tab 3: Pulse Analysis & Visualization - UPGRADED with Smart Export"""
@@ -274,72 +253,11 @@ class PulseTab:
         return None
     
     def export_individual_subplot(self, source_ax, filepath, width_in, height_in, dpi):
-        """Export a single subplot as a standalone figure"""
-        # Create new figure for the individual subplot
-        temp_fig, temp_ax = plt.subplots(figsize=(width_in, height_in))
-        
-        try:
-            # Copy all plot elements from source to temp axis
-            self.copy_axis_content(source_ax, temp_ax)
-            
-            # Save the temporary figure
-            temp_fig.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor='white')
-            
-            messagebox.showinfo("Export", f"Plot exported:\n{filepath}")
-            
-        finally:
-            # Clean up temporary figure
-            plt.close(temp_fig)
+        """Export a single subplot as a standalone figure."""
+        export_single_axis(source_ax, filepath,
+                           width_in=width_in, height_in=height_in, dpi=dpi)
+        messagebox.showinfo("Export", f"Plot exported:\n{filepath}")
     
-    def copy_axis_content(self, source_ax, target_ax):
-        """Copy all content from source axis to target axis"""
-        # Copy lines
-        for line in source_ax.get_lines():
-            target_ax.plot(line.get_xdata(), line.get_ydata(),
-                          color=line.get_color(), linewidth=line.get_linewidth(),
-                          linestyle=line.get_linestyle(), marker=line.get_marker(),
-                          markersize=line.get_markersize(), alpha=line.get_alpha(),
-                          label=line.get_label())
-        
-        # Copy scatter plots
-        for collection in source_ax.collections:
-            if hasattr(collection, 'get_offsets') and len(collection.get_offsets()) > 0:
-                offsets = collection.get_offsets()
-                colors = collection.get_facecolors()
-                sizes = collection.get_sizes()
-                target_ax.scatter(offsets[:, 0], offsets[:, 1], 
-                                c=colors, s=sizes, alpha=collection.get_alpha())
-        
-        # Copy spans (axvspan)
-        for patch in source_ax.patches:
-            if hasattr(patch, 'get_x') and hasattr(patch, 'get_width'):
-                x = patch.get_x()
-                width = patch.get_width()
-                target_ax.axvspan(x, x + width, color=patch.get_facecolor(), 
-                                alpha=patch.get_alpha())
-        
-        # Note: any axhline/axvline in source_ax (e.g. the y=0 reference
-        # line) is already included in source_ax.get_lines() and was already
-        # drawn above by the generic "Copy lines" loop. A separate pass that
-        # re-detects 2-point horizontal/vertical lines and redraws them via
-        # axhline/axvline would double-draw the same line (stacking its
-        # alpha) — axhline/axvline only differ from a plain 2-point plot()
-        # line in how they behave under interactive zoom/pan, which doesn't
-        # matter here since this is a static export with xlim/ylim copied
-        # to match source_ax exactly below.
-
-        # Copy formatting
-        target_ax.set_xlabel(source_ax.get_xlabel(), fontsize=source_ax.xaxis.label.get_fontsize())
-        target_ax.set_ylabel(source_ax.get_ylabel(), fontsize=source_ax.yaxis.label.get_fontsize())
-        #target_ax.set_title(source_ax.get_title(), fontsize=source_ax.title.get_fontsize())
-        target_ax.set_xlim(source_ax.get_xlim())
-        target_ax.set_ylim(source_ax.get_ylim())
-        target_ax.grid(source_ax.get_xgridlines()[0].get_visible() if source_ax.get_xgridlines() else False, 
-                      alpha=0.3)
-        
-        # Copy legend
-        if source_ax.get_legend():
-            target_ax.legend(loc='best')
     
     # ==============================
     # ORIGINAL FUNCTIONALITY (PRESERVED)
