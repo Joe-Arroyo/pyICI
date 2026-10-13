@@ -111,7 +111,9 @@ class PyICIApp(ctk.CTk):
         for i, (key, label) in enumerate(SECTIONS):
             btn = ctk.CTkButton(
                 inner, text=f"{i + 1}   {label}", height=36, width=170,
-                corner_radius=theme.RADIUS_PILL, font=theme.font_sans(13),
+                corner_radius=18, font=theme.font_sans(13),
+                fg_color=theme.BG, text_color=theme.MUTED,
+                hover_color=theme.ACCENT_TINT, border_width=0,
                 command=lambda k=key: self._show_section(k))
             btn.pack(side="left", padx=4)
             self.nav_buttons[key] = btn
@@ -164,7 +166,7 @@ class PyICIApp(ctk.CTk):
                 btn.configure(fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
                               text_color="#ffffff")
             else:
-                btn.configure(fg_color="transparent", hover_color=theme.ACCENT_TINT,
+                btn.configure(fg_color=theme.BG, hover_color=theme.ACCENT_TINT,
                               text_color=theme.MUTED)
 
 
