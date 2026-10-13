@@ -6,6 +6,7 @@ Tests the integration of ALL tabs: Data, Classification, Pulse, Regression, Kine
 
 import tkinter as tk
 from tkinter import ttk, messagebox
+import customtkinter as ctk
 import os
 import sys
 
@@ -20,6 +21,7 @@ from gui.classification_tab import ClassificationTab
 from gui.pulse_analysis_tab import PulseTab
 from gui.regression_tab import RegressionTab  # NEW: Tab 4
 from gui.kinetics_tab import KineticsTab      # NEW: Tab 5
+from gui import theme
 
 class _ObservableDict(dict):
     """A dict that notifies a listener whenever a "watched" key is reassigned.
@@ -418,7 +420,12 @@ def main():
         return
         
     # Create and run the application
-    root = tk.Tk()
+    theme.apply_theme()            # customtkinter appearance (stage 5a)
+    root = ctk.CTk()
+    try:
+        root.configure(fg_color=theme.BG)
+    except Exception:
+        pass
     app = Complete5TabGUI(root)
 
         # Start maximized (cross-platform)
