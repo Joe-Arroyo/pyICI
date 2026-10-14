@@ -27,6 +27,10 @@ if current_dir not in sys.path:
 import customtkinter as ctk
 
 from gui import theme
+from ui_data_loading import DataLoadingSection
+from ui_pulse_check import PulseCheckSection
+from ui_regression import RegressionSection
+from ui_kinetics import KineticsSection
 
 # (key, display label) for each analysis section, in order.
 SECTIONS = [
@@ -39,31 +43,12 @@ SECTIONS = [
 APP_VERSION = "2.0.0-dev"
 
 
-def card(parent, title=None, **frame_kwargs):
-    """A white rounded 'card' container matching the mockup.
-
-    Returns ``(card, body)``: add widgets to ``body`` (a transparent frame that
-    keeps a normal layout); ``card`` carries the surface colour, 1px border and
-    rounded corners, plus an optional bold section header. Kept local to the new
-    GUI so this file is self-contained.
-    """
-    outer = ctk.CTkFrame(parent, fg_color=theme.SURFACE, border_color=theme.BORDER,
-                         border_width=1, corner_radius=theme.RADIUS_CARD, **frame_kwargs)
-    if title:
-        ctk.CTkLabel(outer, text=title, font=theme.font_sans(15, "bold"),
-                     text_color=theme.TEXT, anchor="w").pack(
-                         fill="x", padx=theme.PAD_CARD, pady=(theme.PAD_CARD, 4))
-    body = ctk.CTkFrame(outer, fg_color="transparent")
-    body.pack(fill="both", expand=True, padx=theme.PAD_CARD, pady=(0, theme.PAD_CARD))
-    return outer, body
-
-
 class PyICIApp(ctk.CTk):
     """The new pyICI application window (shell)."""
 
     def __init__(self):
         super().__init__()
-        self.title("pyICI - Intermittent Current Interruption Analysis")
+        self.title("pyICI")
         self.geometry("1400x900")
         self.minsize(1100, 700)
         self.configure(fg_color=theme.BG)
@@ -80,29 +65,24 @@ class PyICIApp(ctk.CTk):
 
     # ---- header -----------------------------------------------------------
     def _build_header(self):
-        header = ctk.CTkFrame(self, fg_color=theme.SURFACE, corner_radius=0, height=54)
+        header = ctk.CTkFrame(self, fg_color=theme.SURFACE, corner_radius=0, height=78)
         header.pack(side="top", fill="x")
         header.pack_propagate(False)
 
-        left = ctk.CTkFrame(header, fg_color="transparent")
-        left.pack(side="left", padx=16, pady=8)
-        ctk.CTkLabel(left, text="ICI", width=34, height=30, corner_radius=8,
-                     fg_color=theme.ACCENT, text_color="#ffffff",
-                     font=theme.font_sans(12, "bold")).pack(side="left", padx=(0, 10))
-        titles = ctk.CTkFrame(left, fg_color="transparent")
-        titles.pack(side="left")
-        ctk.CTkLabel(titles, text="pyICI", font=theme.font_sans(15, "bold"),
+        titles = ctk.CTkFrame(header, fg_color="transparent")
+        titles.pack(side="left", padx=18, pady=8)
+        ctk.CTkLabel(titles, text="pyICI", font=theme.font_sans(16, "bold"),
                      text_color=theme.TEXT, anchor="w").pack(anchor="w")
         ctk.CTkLabel(titles, text="Intermittent Current Interruption Analysis",
                      font=theme.font_sans(11), text_color=theme.MUTED, anchor="w").pack(anchor="w")
 
         ctk.CTkLabel(header, text=f"v{APP_VERSION}", font=theme.font_mono(11),
                      text_color=theme.MUTED, fg_color=theme.BG, corner_radius=theme.RADIUS_PILL,
-                     width=96, height=24).pack(side="right", padx=16)
+                     width=104, height=28).pack(side="right", padx=18)
 
     # ---- top navigation (section switcher) --------------------------------
     def _build_nav(self):
-        nav = ctk.CTkFrame(self, fg_color=theme.SURFACE, corner_radius=0, height=52)
+        nav = ctk.CTkFrame(self, fg_color=theme.SURFACE, corner_radius=0, height=60)
         nav.pack(side="top", fill="x")
         nav.pack_propagate(False)
 
@@ -110,8 +90,8 @@ class PyICIApp(ctk.CTk):
         inner.pack(side="left", padx=12, pady=8)
         for i, (key, label) in enumerate(SECTIONS):
             btn = ctk.CTkButton(
-                inner, text=f"{i + 1}   {label}", height=36, width=170,
-                corner_radius=18, font=theme.font_sans(13),
+                inner, text=f"{i + 1}   {label}", height=42, width=200,
+                corner_radius=21, font=theme.font_sans(13),
                 fg_color=theme.BG, text_color=theme.MUTED,
                 hover_color=theme.ACCENT_TINT, border_width=0,
                 command=lambda k=key: self._show_section(k))
@@ -126,21 +106,29 @@ class PyICIApp(ctk.CTk):
             self.section_frames[key] = self._make_section(key, label)
 
     def _make_section(self, key, label):
-        """A section = left controls card + right plot card (placeholders for now)."""
-        frame = ctk.CTkFrame(self.content, fg_color="transparent")
+        """Build a section frame. 'data' is the real Data-loading section; the
+        others are placeholders (left controls card + right plot card) for now."""
+        if key == "data":
+            return DataLoadingSection(self.content, self)
+        if key == "pulse":
+            return PulseCheckSection(self.content, self)
+        if key == "regression":
+            return RegressionSection(self.content, self)
+        if key == "kinetics":
+            return KineticsSection(self.content, self)
 
-        controls_card, controls_body = card(frame, f"{label} - controls", width=320)
+        frame = ctk.CTkFrame(self.content, fg_color="transparent")
+        controls_card, controls_body = theme.card(frame, f"{label} - controls", width=320)
         controls_card.pack(side="left", fill="y", padx=(0, theme.GAP))
         controls_card.pack_propagate(False)
         ctk.CTkLabel(controls_body, text="Controls will go here",
                      font=theme.font_sans(13), text_color=theme.MUTED,
                      anchor="w", justify="left").pack(anchor="w", pady=6)
 
-        plot_card, plot_body = card(frame, f"{label} - plots")
+        plot_card, plot_body = theme.card(frame, f"{label} - plots")
         plot_card.pack(side="left", fill="both", expand=True)
         ctk.CTkLabel(plot_body, text="Plot area", font=theme.font_sans(14),
                      text_color=theme.FAINT).pack(expand=True)
-
         return frame
 
     # ---- status bar -------------------------------------------------------
@@ -156,9 +144,13 @@ class PyICIApp(ctk.CTk):
     def _show_section(self, key):
         for frame in self.section_frames.values():
             frame.pack_forget()
-        self.section_frames[key].pack(fill="both", expand=True)
+        frame = self.section_frames[key]
+        frame.pack(fill="both", expand=True)
         self.active_section = key
         self._refresh_nav()
+        on_show = getattr(frame, "on_show", None)
+        if callable(on_show):
+            on_show()
 
     def _refresh_nav(self):
         for key, btn in self.nav_buttons.items():

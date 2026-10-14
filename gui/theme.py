@@ -68,12 +68,24 @@ def _first_available(preferred):
     return preferred[0]
 
 
+# Global font-size multiplier. Raise/lower this one number to scale all text.
+FONT_SCALE = 1.55
+
+# Default width (px) of a section's left controls column. One place so every
+# section stays in step; widened to give the controls more room.
+CONTROL_W = 460
+
+
+def _scaled(size):
+    return int(round(size * FONT_SCALE))
+
+
 def font_sans(size=13, weight="normal"):
     """A CTkFont in the UI sans family (IBM Plex Sans or fallback)."""
     global _sans_family
     if _sans_family is None:
         _sans_family = _first_available(_SANS_PREFS)
-    return ctk.CTkFont(family=_sans_family, size=size, weight=weight)
+    return ctk.CTkFont(family=_sans_family, size=_scaled(size), weight=weight)
 
 
 def font_mono(size=13, weight="normal"):
@@ -84,7 +96,7 @@ def font_mono(size=13, weight="normal"):
     global _mono_family
     if _mono_family is None:
         _mono_family = _first_available(_MONO_PREFS)
-    return ctk.CTkFont(family=_mono_family, size=size, weight=weight)
+    return ctk.CTkFont(family=_mono_family, size=_scaled(size), weight=weight)
 
 
 def apply_theme():
@@ -95,3 +107,22 @@ def apply_theme():
     """
     ctk.set_appearance_mode("light")
     ctk.set_default_color_theme("green")
+
+
+def card(parent, title=None, **frame_kwargs):
+    """A white rounded 'card' container matching the mockup.
+
+    Returns ``(card, body)``: add widgets to ``body`` (a transparent frame that
+    keeps a normal layout); ``card`` carries the surface colour, 1px border and
+    rounded corners, plus an optional bold section header.
+    """
+    import customtkinter as _ctk
+    outer = _ctk.CTkFrame(parent, fg_color=SURFACE, border_color=BORDER,
+                          border_width=1, corner_radius=RADIUS_CARD, **frame_kwargs)
+    if title:
+        _ctk.CTkLabel(outer, text=title, font=font_sans(15, "bold"),
+                      text_color=TEXT, anchor="w").pack(
+                          fill="x", padx=PAD_CARD, pady=(PAD_CARD, 4))
+    body = _ctk.CTkFrame(outer, fg_color="transparent")
+    body.pack(fill="both", expand=True, padx=PAD_CARD, pady=(0, PAD_CARD))
+    return outer, body

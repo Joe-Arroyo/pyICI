@@ -444,6 +444,36 @@ def compute_R_k_for_cycles(df_raw, cycle_nums, phase, window_mode=DEFAULT_WINDOW
 
     return results
 
+def rk_result_rows(result, cycle_num):
+    """Flatten one :func:`compute_R_k_for_cycle` result into per-pulse row dicts.
+
+    The single source of truth for the exported CSV schema: one dict per pulse
+    with cycle, pulse number, voltage, capacity, specific capacity, R, R_err, k,
+    k_err, R², and the regression window used. Shared by
+    :func:`export_R_k_results` and the GUI's per-phase CSV export so both stay in
+    lock-step.
+    """
+    rows = []
+    for i in range(len(result['pulse_nums'])):
+        rows.append({
+            'Cycle': cycle_num,
+            'Pulse_Number': result['pulse_nums'][i],
+            'Voltage (V)': result['voltages'][i],
+            'Capacity (mAh)': result['capacity'][i],
+            'Specific_Capacity (mAh/g)': result['specific_capacity'][i],
+            'R (Ohm)': result['R'][i],
+            'R_err (Ohm)': result['R_err'][i],
+            'k (Ohm·s^0.5)': result['k'][i],
+            'k_err (Ohm·s^0.5)': result['k_err'][i],
+            'R2': result['r2'][i],
+            'Window_Mode': result['window_mode'][i],
+            'Window_Start': result['window_start'][i],
+            'Window_End': result['window_end'][i],
+            'N_points': result['n_points'][i],
+        })
+    return rows
+
+
 def export_R_k_results(df_raw, cycle_nums, window_mode=DEFAULT_WINDOW_MODE,
                        window_start=None, window_end=None, saved_params=None,
                        output_folder="exports", filename_prefix="", mass_mg=0):
@@ -492,23 +522,7 @@ def export_R_k_results(df_raw, cycle_nums, window_mode=DEFAULT_WINDOW_MODE,
                                            window_start, window_end, saved_params, mass_mg)
 
             if result:
-                for i in range(len(result['voltages'])):
-                    all_data.append({
-                        'Cycle': cycle_num,
-                        'Pulse_Number': result['pulse_nums'][i],
-                        'Voltage (V)': result['voltages'][i],
-                        'Capacity (mAh)': result['capacity'][i],
-                        'Specific_Capacity (mAh/g)': result['specific_capacity'][i],
-                        'R (Ohm)': result['R'][i],
-                        'R_err (Ohm)': result['R_err'][i],
-                        'k (Ohm·s^0.5)': result['k'][i],
-                        'k_err (Ohm·s^0.5)': result['k_err'][i],
-                        'R2': result['r2'][i],
-                        'Window_Mode': result['window_mode'][i],
-                        'Window_Start': result['window_start'][i],
-                        'Window_End': result['window_end'][i],
-                        'N_points': result['n_points'][i],
-                    })
+                all_data.extend(rk_result_rows(result, cycle_num))
 
         if all_data:
             df_export = pd.DataFrame(all_data)

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- New customtkinter interface — run `python main_gui_new.py` — alongside the
+  existing GUI. Four sections (Data loading, Pulse check, Regression, Kinetic
+  analysis) in a controls-left / plots-right layout, built on the same analysis
+  layer so R/k results are identical.
+  - **Multiple files**: load several datasets, choose the file per analysis tab
+    independently, and overlay files for comparison (R & k in Kinetic analysis;
+    voltage / capacity in Data loading).
+  - **Regression**: apply a fit window to a single pulse, a whole cycle, or all
+    cycles (preview), and Save to persist it per file; an "Overall check" of R²
+    across all cycles; R and k shown on the fit plot; a secondary time axis.
+  - **Kinetic analysis**: R and k vs voltage / capacity / specific capacity,
+    using the per-pulse windows carried over from Regression; CSV export per
+    phase (and per file when overlaid) in the established column layout; export
+    the R plot, the k plot, or both.
+  - **Data loading**: capacity / specific-capacity view with a CSV export
+    matching the previous Classification export.
+  - Consistent blue (charge) / red (discharge) colour scheme that darkens with
+    cycle number across the capacity, regression and kinetic plots.
+
 ### Fixed
 - Data files saved in non-UTF-8 text encodings (e.g. Windows-1252 / Latin-1, as
   exported by some cyclers) now load correctly instead of failing with a decoding
@@ -14,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exporting a plot no longer strips the titles from the on-screen figure. (The
   Classification tab's figure export previously blanked the plot titles without
   restoring them.)
+- Embedded plots no longer grow/shrink the window or clip the lower subplot on
+  first render — the shared plot panel now fits the figure to its widget size.
 
 ### Removed
 - Removed the non-functional "Max Rest (s)" field from the Data tab. It was shown
@@ -24,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Internal: the maximum-rest-duration constant now has a single definition shared
   across the analysis modules (previously duplicated in four files). No change to
   results.
+- Internal: one shared helper (`kinetic_analyzer.rk_result_rows`) now builds the
+  R/k CSV rows for both the batch export and the new GUI, so the exported column
+  layout has a single definition. No change to the exported values.
 - Internal (no change to results or exported values): began the GUI modernization.
   The matplotlib plumbing and figure-export code that had been copy-pasted across
   all five tabs were consolidated into two shared components
