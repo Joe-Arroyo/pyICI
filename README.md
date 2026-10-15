@@ -17,34 +17,29 @@ Technical details of the ICI technique and associated literature can be found on
 
 ## Features
 
-- **Data Loading & visualization**: Import and view cycling data (as long as the formatting of the input datafile is respected)
-  - ICI cycle detection
-  - Data visualization of individual or multiple cycles 
-  - Plots available: Voltage vs time and current vs time (only in individual cycle visualization)
-    
-- **Classification**: Identify and classify cycling regimes
-  - Charge and discharge regime detection
-  -  Current interruption step identification
-  - Plots available: Voltage vs time and Voltage vs capacity 
+The GUI is organized into four sections:
 
-- **Pulse analysis**: Evaluate voltage during individual current interruption pulses
+- **Data loading & visualization**: Import and view cycling data — several files at once, with an optional overlay to compare them.
+  - Automatic ICI cycle detection for three-column files; a column-mapping dialog for files with more columns
+  - Charge / discharge classification, coloured by cycle
+  - Plots: voltage vs time (all cycles, a subset, or a single cycle, with an optional current subplot) and voltage vs capacity / specific capacity
+  - CSV export of the capacity data
 
-- **Regression analysis**: Interactively perform linear regression of the voltage vs $\sqrt{time}$ data during each ICI step
-  - User-defined regression analysis window (within the current interruption period)
-  - Fit parameters: slope and intercept
-  - Fit evaluated with R<sup>2</sup> (the coefficient of determination) values
-  - Both the regression fit and R<sup>2</sup> shown in adjacent windows 
-  - Covariance matrix used for error propagation analysis
-  - Possibility to individually fit each ICI step if batch processing is unsuitable
-  - Side-by-side visualization for charge and discharge analysis
-     
-- **Resistance analysis**: *R* and *k* calculation from the regression analysis
-  - $R = - \frac{intercept}{I}$, with I being the current before the interruption 
-  - $k = - \frac{slope}{I}$, with I being the current before the interruption
-  - Errors calculated using the data from the covariance matrix
-  - Cycle selection
-  - Side-by-side visualization for charge and discharge
-  - Data export of all values with errors for further analysis. These values include *V*, *R*, *R_errors*, *k*, *k_errors*, and *R*<sup>2</sup>
+- **Pulse verification**: Step through a cycle's current-interruption pulses to check they are segmented correctly.
+  - Whole-cycle overview with the selected pulse highlighted
+  - Per-pulse detail (voltage + current) and a zoom on the rest-period relaxation with *V₀* marked
+
+- **Regression**: Interactively perform linear regression of the voltage vs $\sqrt{time}$ data during each ICI step.
+  - User-defined fit window (time or index), applied to a single pulse, a whole cycle, or all cycles, and saved per file
+  - Fit parameters (slope, intercept) evaluated with R<sup>2</sup>, using the covariance matrix for error propagation
+  - The regression fit and an R<sup>2</sup>-across-pulses plot shown together, with axis-limit controls; an "Overall check" of R<sup>2</sup> across every cycle
+  - *R* and *k* shown on the fit plot, and a secondary time axis on the ΔV-vs-√time plot
+
+- **Kinetic analysis**: *R* and *k* calculation from the regression parameters.
+  - $R = - \frac{intercept}{I}$ and $k = - \frac{slope}{I}$, with *I* the current before the interruption
+  - *R* and *k* vs voltage, capacity, or specific capacity — coloured by cycle, with axis-limit controls and multi-file overlay
+  - Covariance-based error bars
+  - CSV export (per phase, and per file when overlaid) of *V*, *R*, *R_errors*, *k*, *k_errors* and *R*<sup>2</sup>, plus figure export (*R*, *k*, or both)
 
 ## Installation
 

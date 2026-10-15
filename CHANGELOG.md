@@ -8,11 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- New customtkinter interface — run `python main_gui_new.py` — alongside the
-  existing GUI. Four sections (Data loading, Pulse verification, Regression,
-  Kinetic analysis) in a controls-left / plots-right layout, built on the same
-  analysis layer so R/k results are identical.
-  - **Multiple files**: load several datasets, choose the file per analysis tab
+- **New customtkinter interface — now the application** (`python main_gui.py`, or
+  the `pyici` command). It replaces the previous tkinter tab GUI; the sections now
+  live in `gui/sections/` and call the same pure analysis layer, so R/k results
+  are identical. Four sections (Data loading, Pulse verification, Regression,
+  Kinetic analysis) in a controls-left / plots-right layout.
+  - **Multiple files**: load several datasets, choose the file per section
     independently, and overlay files for comparison (R & k in Kinetic analysis;
     voltage / capacity in Data loading).
   - **Data loading**: voltage-vs-time and capacity / specific-capacity views
@@ -43,13 +44,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exporting a plot no longer strips the titles from the on-screen figure. (The
   Classification tab's figure export previously blanked the plot titles without
   restoring them.)
-- Embedded plots no longer grow/shrink the window or clip the lower subplot on
-  first render — the shared plot panel now fits the figure to its widget size.
+- Embedded plots now lay out correctly on first render. Previously titles, axis
+  labels and the legend could overlap until you navigated, because the figure was
+  laid out before it had been sized to the panel; the shared plot panel now uses
+  matplotlib's constrained layout, which re-fits on every draw (and handles the
+  kinetic colorbar natively).
 
 ### Removed
 - Removed the non-functional "Max Rest (s)" field from the Data tab. It was shown
   and validated but never actually applied; the maximum valid rest duration
   stays fixed at 1800 s.
+- The legacy tkinter tab GUI (the five `*_tab.py` modules and the old
+  `main_gui.py`) has been removed. The customtkinter interface above is now the
+  sole GUI and entry point.
 
 ### Changed
 - Internal: the maximum-rest-duration constant now has a single definition shared
@@ -65,6 +72,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   status bar now refreshes when the data changes (event-driven) instead of polling
   on a 1-second timer. `customtkinter` was added as a dependency as groundwork for
   the forthcoming interface restyle.
+- Internal (no change to results): the GUI sections moved from top-level modules
+  into the `gui/sections/` package, and `main_gui.py` is now the customtkinter
+  entry point. Dropped the now-unused per-subplot export helper
+  (`export_single_axis`) and a few unused imports left over from the old tabs.
 
 ## [1.4.0] - 2026-10-07
 
