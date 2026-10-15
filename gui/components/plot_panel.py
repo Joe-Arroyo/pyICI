@@ -43,7 +43,17 @@ class PlotPanel(tk.Frame):
     """
 
     def __init__(self, master, *, figsize=(8, 6), toolbar=True, **kwargs):
+        # Stop the panel from resizing itself to the canvas's requested size.
+        # FigureCanvasTkAgg asks for the figure's pixel size (figsize x dpi),
+        # which — left to propagate — pushes the toplevel window larger, then
+        # matplotlib refits the figure to the widget and it shrinks again,
+        # oscillating on every redraw. With pack_propagate(False) the panel is
+        # sized top-down by its parent (it still fills via pack(expand=True)) and
+        # the canvas fills the panel, so the figure never drives the window.
+        # No baseline width/height is set: a floor larger than the space a parent
+        # hands over at first render would clip the (taller) figure.
         super().__init__(master, **kwargs)
+        self.pack_propagate(False)
 
         self.figure = Figure(figsize=figsize)
         self.canvas = FigureCanvasTkAgg(self.figure, self)
@@ -73,5 +83,24 @@ class PlotPanel(tk.Frame):
         self.figure.clear()
 
     def refresh(self):
-        """Redraw the canvas after the figure's contents have changed."""
+        """Redraw the canvas after the figure's contents have changed.
+
+        First fit the figure to the widget's CURRENT pixel size. matplotlib only
+        rescales the figure to the widget on a later ``<Configure>`` event, so a
+        plot drawn right after a section is shown (before the widget is laid out)
+        would render at the initial ``figsize`` — taller than the viewport, which
+        clips the lower subplot until the window is resized. Flushing pending
+        geometry with ``update_idletasks`` and then matching the figure to the
+        widget removes that race. ``forward=False`` keeps it from resizing the
+        toplevel window.
+        """
+        widget = self.canvas.get_tk_widget()
+        try:
+            widget.update_idletasks()
+            w, h = widget.winfo_width(), widget.winfo_height()
+            if w > 1 and h > 1:
+                dpi = self.figure.get_dpi()
+                self.figure.set_size_inches(w / dpi, h / dpi, forward=False)
+        except Exception:
+            pass
         self.canvas.draw_idle()
