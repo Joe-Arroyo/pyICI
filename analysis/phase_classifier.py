@@ -6,7 +6,6 @@ single-cycle classification plot used by the Classification tab.
 """
 
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 
 # CONFIGURATION

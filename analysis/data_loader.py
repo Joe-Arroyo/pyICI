@@ -12,7 +12,9 @@ import pandas as pd
 import numpy as np
 from collections import namedtuple
 
-from analysis.phase_classifier import MAX_REST_DURATION  # single source of truth
+# Re-exported so every analysis module exposes the SAME constant object (F3
+# single-source guard in tests/test_pulse_analysis.py). Imported, not used here.
+from analysis.phase_classifier import MAX_REST_DURATION  # noqa: F401
 
 # =============================================================================
 # CONFIGURATION (defaults; the GUI passes its own values as arguments)

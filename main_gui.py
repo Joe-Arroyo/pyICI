@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
-"""pyICI — new GUI (mockup-based). APP SHELL.
+"""pyICI — application entry point (customtkinter GUI).
 
-A fresh customtkinter front-end built to the modernized mockup. This file is the
-shell only: a header, a top navigation (the four analysis sections), a content
+The app shell: a header, a top navigation (the four analysis sections), a content
 area split into a left controls column and a right plot area, and a status bar.
-Each section's body is a placeholder for now — real content is added section by
-section on top of this shell.
+Each section lives in ``gui/sections/`` and is thin presentation that calls the
+pure ``analysis`` layer.
 
 Sections:
-  1. Data loading     — load data, see cycles, capacity / specific-capacity plots
-  2. Pulse verification — cycle overview with current-position highlight + pulse detail
-  3. Regression       — charge/discharge regression + R2 across cycles
-  4. Kinetic analysis — R and k vs voltage for charge / discharge
+  1. Data loading       — load data, see cycles, capacity / specific-capacity plots
+  2. Pulse verification — cycle overview + pulse detail + rest-period zoom
+  3. Regression         — charge/discharge ΔV-vs-√t regression + R² across cycles
+  4. Kinetic analysis   — R and k vs voltage / capacity for charge / discharge
 
-The existing app (main_gui.py) is left untouched; run this one with:
-    python main_gui_new.py
+Run with:
+    python main_gui.py
 """
 import os
 import sys

@@ -9,7 +9,6 @@ Pure analysis layer: functions take data as arguments and return results.
 # IMPORTS
 # =============================================================================
 
-import numpy as np
 import pandas as pd
 from collections import namedtuple
 
