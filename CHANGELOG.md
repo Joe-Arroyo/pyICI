@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-16
+
 ### Added
 - **New customtkinter interface — now the application** (`python main_gui.py`, or
   the `pyici` command). It replaces the previous tkinter tab GUI; the sections now
@@ -76,6 +78,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   into the `gui/sections/` package, and `main_gui.py` is now the customtkinter
   entry point. Dropped the now-unused per-subplot export helper
   (`export_single_axis`) and a few unused imports left over from the old tabs.
+- **Performance (no change to results):** the pulse-segmentation hot path was
+  vectorized — `assign_valid_pulses` (element-by-element → run-based numpy),
+  `compute_V0_t0` and `get_pre_pulse_currents` (per-pulse frame re-filtering →
+  single pass + mapped broadcast). The full R/k pipeline over the 10-cycle example
+  is ~2.9× faster (≈1.93 s → ≈0.67 s), with byte-for-byte identical output verified
+  against the originals and pinned by new known-answer tests.
 
 ## [1.4.0] - 2026-10-07
 
@@ -229,7 +237,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error propagation. Supports single-cycle (3-column) and multi-cycle
   (4-column) input files.
 
-[Unreleased]: https://github.com/Joe-Arroyo/pyICI/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/Joe-Arroyo/pyICI/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/Joe-Arroyo/pyICI/compare/v1.4.0...v2.0.0
 [1.4.0]: https://github.com/Joe-Arroyo/pyICI/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/Joe-Arroyo/pyICI/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Joe-Arroyo/pyICI/compare/v1.1.0...v1.2.0
