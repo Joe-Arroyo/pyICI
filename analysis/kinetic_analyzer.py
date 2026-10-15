@@ -123,33 +123,29 @@ def get_pre_pulse_currents(data, pulse_numbers):
         ``voltages`` in volts. A pulse with no rest data, or none preceding it,
         yields ``nan`` in both arrays.
     """
+    cur = data['I/mA'].to_numpy()
+    volt = data['E/V'].to_numpy()
+    pulse = data['pulse_number'].to_numpy()
+
+    # First rest (I == 0) position within `data` for each pulse, in one pass
+    # (rest positions are ascending, so the first seen per pulse is the earliest).
+    first_rest_pos = {}
+    rest_idx = np.flatnonzero(cur == 0)
+    if rest_idx.size:
+        uniq, first_occ = np.unique(pulse[rest_idx], return_index=True)
+        first_rest_pos = {int(p): int(rest_idx[fo]) for p, fo in zip(uniq, first_occ)}
+
     currents = []
     voltages = []
-    
     for pulse_num in pulse_numbers:
-        pulse_data = data[data['pulse_number'] == pulse_num]
-        rest_data = pulse_data[pulse_data['I/mA'] == 0]
-        
-        if rest_data.empty:
+        pos = first_rest_pos.get(int(pulse_num))
+        if pos is None or pos - 1 < 0:   # no rest, or no sample before the interruption
             currents.append(np.nan)
             voltages.append(np.nan)
             continue
-        
-        first_rest_idx = rest_data.index[0]
-        pulse_data_idx = data.index.get_loc(first_rest_idx)
-        prev_idx = pulse_data_idx - 1
-        
-        if prev_idx < 0:
-            currents.append(np.nan)
-            voltages.append(np.nan)
-            continue
-        
-        current_mA = data.iloc[prev_idx]['I/mA']
-        voltage_V = data.iloc[prev_idx]['E/V']
-        
-        currents.append(current_mA / 1000.0)
-        voltages.append(voltage_V)
-    
+        currents.append(cur[pos - 1] / 1000.0)   # mA -> A
+        voltages.append(volt[pos - 1])
+
     return np.array(currents), np.array(voltages)
 
 def compute_regression_with_covariance(data, pulse_num, window_mode, window_start, window_end):

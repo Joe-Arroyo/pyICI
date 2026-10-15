@@ -191,25 +191,40 @@ def assign_valid_pulses(df, max_rest=MAX_REST_DURATION):
     return df
 
 def compute_V0_t0(df):
-    """Compute V0 and t0 for each pulse."""
+    """Compute V0 and t0 for each pulse.
+
+    V0 / t0 are the voltage / time of the LAST active-current sample (``I != 0``)
+    of each pulse — the point just before the interruption. Every row of a pulse
+    carries its pulse's V0/t0; a pulse with no active sample gets NaN.
+
+    Vectorized: one pass finds each pulse's last active sample, then a mapped
+    broadcast fills the columns — instead of re-filtering the frame once per
+    pulse. Output is unchanged.
+    """
     df = df.copy()
-    V0_list, t0_list = [], []
-    
-    for p in df['pulse_number'].unique():
-        pulse_df = df[df['pulse_number'] == p].copy()
-        nonzero = pulse_df[pulse_df['I/mA'] != 0]
-        
-        if not nonzero.empty:
-            V0 = nonzero['E/V'].iloc[-1]
-            t0 = nonzero['t/s'].iloc[-1]
-        else:
-            V0, t0 = np.nan, np.nan
-            
-        V0_list.extend([V0] * len(pulse_df))
-        t0_list.extend([t0] * len(pulse_df))
-    
-    df['V0'] = V0_list
-    df['t0'] = t0_list
+    if len(df) == 0:
+        df['V0'] = np.array([], dtype=float)
+        df['t0'] = np.array([], dtype=float)
+        return df
+
+    pulse = df['pulse_number'].to_numpy()
+    cur = df['I/mA'].to_numpy()
+    volt = df['E/V'].to_numpy()
+    tsec = df['t/s'].to_numpy()
+
+    v0_map, t0_map = {}, {}
+    active_idx = np.flatnonzero(cur != 0)
+    if active_idx.size:
+        # Last active sample per pulse: scan active positions in reverse and keep
+        # the first seen for each pulse (= the last in forward order).
+        rev = active_idx[::-1]
+        uniq, first_in_rev = np.unique(pulse[rev], return_index=True)
+        last_idx = rev[first_in_rev]
+        v0_map = {int(p): volt[i] for p, i in zip(uniq, last_idx)}
+        t0_map = {int(p): tsec[i] for p, i in zip(uniq, last_idx)}
+
+    df['V0'] = df['pulse_number'].map(v0_map)
+    df['t0'] = df['pulse_number'].map(t0_map)
     return df
 
 def get_V0(data, pulse_number):
