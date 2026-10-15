@@ -434,7 +434,6 @@ class PulseCheckSection(ctk.CTkFrame):
         self._plot_overview(ax_over)
         self._plot_detail(ax_det)
         self._plot_rest(ax_rest)
-        fig.tight_layout(w_pad=1.5)
         self.panel.refresh()
 
     def _plot_overview(self, ax):

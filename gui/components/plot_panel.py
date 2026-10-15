@@ -55,7 +55,12 @@ class PlotPanel(tk.Frame):
         super().__init__(master, **kwargs)
         self.pack_propagate(False)
 
-        self.figure = Figure(figsize=figsize)
+        # constrained_layout re-computes spacing on EVERY draw at the figure's
+        # current size, so embedded plots lay out correctly on the first render
+        # and after any resize — no stale-size overlap of titles/labels/legends,
+        # and colorbars are handled natively. Sections therefore must NOT call
+        # fig.tight_layout() on this figure (it's incompatible with the engine).
+        self.figure = Figure(figsize=figsize, layout="constrained")
         self.canvas = FigureCanvasTkAgg(self.figure, self)
 
         if toolbar:

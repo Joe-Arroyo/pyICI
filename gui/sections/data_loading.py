@@ -537,7 +537,6 @@ class DataLoadingSection(ctk.CTkFrame):
         else:
             ax_v.set_xlabel("Time (s)")
         self._apply_axis_limits(ax_v)
-        fig.tight_layout()
         self.panel.refresh()
 
     def _mark_ici(self, ax, cycle_data, ici_starts, cycle_num, color, ycol):
@@ -635,7 +634,6 @@ class DataLoadingSection(ctk.CTkFrame):
         ax.set_ylabel("Voltage (V)")
         ax.grid(True, alpha=0.3)
         self._apply_axis_limits(ax)
-        fig.tight_layout()
         self.panel.refresh()
 
     def _plot_capacity_single(self, fig, ax):

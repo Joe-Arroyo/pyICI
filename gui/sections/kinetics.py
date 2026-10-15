@@ -513,7 +513,6 @@ class KineticsSection(ctk.CTkFrame):
             leg = ax_R.legend(loc="best", fontsize=8)
             if leg is not None:
                 leg.set_draggable(True)
-            fig.tight_layout()
         self.panel.refresh()
 
     def _plot_overlay(self, fig):
@@ -549,7 +548,6 @@ class KineticsSection(ctk.CTkFrame):
         leg = ax_R.legend(loc="best", fontsize=8)
         if leg is not None:
             leg.set_draggable(True)
-        fig.tight_layout()
         self.panel.refresh()
 
     # ---- export -----------------------------------------------------------

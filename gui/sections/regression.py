@@ -802,7 +802,6 @@ class RegressionSection(ctk.CTkFrame):
             self._plot_overall(ax2)
         else:
             self._plot_r2_cycle(ax2)
-        fig.tight_layout(pad=2.2)
         self.panel.refresh()
 
     def _add_secondary_time_axis(self, ax):
@@ -871,7 +870,7 @@ class RegressionSection(ctk.CTkFrame):
             R = -fit["intercept"] / I           # R = -intercept / I   (I in amps)
             k = -fit["slope"] / I               # k = -slope / I
             title += f"\nR = {R:.4g} Ω    k = {k:.4g} Ω·s$^{{-1/2}}$"
-        ax.set_title(title, fontsize=11, fontweight="bold", pad=26)
+        ax.set_title(title, fontsize=11, fontweight="bold", pad=8)
 
         leg = ax.legend(loc="best", fontsize="x-small", frameon=True)
         if leg is not None:
