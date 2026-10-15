@@ -32,6 +32,7 @@ import customtkinter as ctk
 from gui import theme
 from gui.components.plot_panel import PlotPanel
 from gui.components.export_helper import export_figure
+from gui.components.scroll import AutoHideScrollableFrame
 import analysis.regression_analyzer as ra
 import analysis.kinetic_analyzer as ka
 
@@ -46,6 +47,18 @@ C_REGPTS = "#e8820c"      # orange regression points
 
 TIME_START, TIME_END = ra.DEFAULT_TIME_START, ra.DEFAULT_TIME_END      # 0.1, 1.0 s
 INDEX_START, INDEX_END = ra.DEFAULT_INDEX_START, ra.DEFAULT_INDEX_END   # 2, 10 (1-based)
+
+# Regression-window modes. The label shown in the dropdown IS the mode string
+# passed to ra.resolve_window.
+MODE_TIME, MODE_INDEX = "time", "index"
+MODE_VALUES = [MODE_TIME, MODE_INDEX]
+
+
+def _mode_defaults(mode):
+    """(start, end) default bounds for a window mode."""
+    if mode == MODE_TIME:
+        return TIME_START, TIME_END
+    return INDEX_START, INDEX_END
 
 
 class RegressionSection(ctk.CTkFrame):
@@ -80,6 +93,13 @@ class RegressionSection(ctk.CTkFrame):
         self.cycle_entry_var = tk.StringVar(value="")
         self.pulse_entry_var = tk.StringVar(value="")
 
+        # R² plot axis limits (blank = auto). X is pulse # (cycle view) or cycle
+        # number (overall view); Y is R².
+        self.r2_xmin_var = tk.StringVar(value="")
+        self.r2_xmax_var = tk.StringVar(value="")
+        self.r2_ymin_var = tk.StringVar(value="")
+        self.r2_ymax_var = tk.StringVar(value="")
+
         self.fig_w_var = tk.StringVar(value="10")
         self.fig_h_var = tk.StringVar(value="8")
         self.dpi_var = tk.StringVar(value="300")
@@ -93,28 +113,45 @@ class RegressionSection(ctk.CTkFrame):
         card, outer = theme.card(self, "Regression - controls", width=theme.CONTROL_W)
         card.pack(side="left", fill="y", padx=(0, theme.GAP))
         card.pack_propagate(False)
-        body = ctk.CTkScrollableFrame(outer, fg_color="transparent")
-        body.pack(fill="both", expand=True)
+        body = AutoHideScrollableFrame(outer, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=(2, 12))        # breathing room
 
-        ctk.CTkLabel(body, text="File", font=theme.font_sans(12), text_color=theme.MUTED,
-                     anchor="w").pack(fill="x")
-        self.file_menu = ctk.CTkOptionMenu(
-            body, variable=self.file_var, values=["(no files)"], command=self._on_file_change,
-            fg_color=theme.SURFACE, text_color=theme.TEXT, button_color=theme.ACCENT,
-            button_hover_color=theme.ACCENT_HOVER, font=theme.font_sans(13),
-            dropdown_font=theme.font_sans(13))
+        def slabel(text, pady=(0, 2)):                            # #1 bold/dark labels
+            ctk.CTkLabel(body, text=text, font=theme.font_sans(13, "bold"),
+                         text_color=theme.TEXT, anchor="w").pack(fill="x", pady=pady)
+
+        # File selector (teal dropdown, same as Data loading / Pulse check)  # #1
+        slabel("File")
+        self.file_menu = ctk.CTkComboBox(
+            body, variable=self.file_var, values=["(no files)"], state="readonly",
+            command=self._on_file_change,
+            fg_color=theme.ACCENT, text_color="#ffffff",
+            border_color=theme.ACCENT_HOVER, border_width=1,
+            button_color=theme.ACCENT_HOVER, button_hover_color=theme.ACCENT,
+            font=theme.font_sans(13), dropdown_font=theme.font_sans(13),
+            dropdown_fg_color=theme.SURFACE, dropdown_text_color=theme.TEXT,
+            dropdown_hover_color=theme.ACCENT_TINT)
         self.file_menu.pack(fill="x", pady=(2, 0))
         ctk.CTkLabel(body, text="(files are loaded in Data loading)",
-                     font=theme.font_sans(11), text_color=theme.FAINT,
+                     font=theme.font_sans(12), text_color=theme.MUTED,
                      anchor="w").pack(fill="x", pady=(0, 2))
 
+        # Phase selector - below the file, above cycle            # #2
+        slabel("Phase", pady=(10, 2))
+        self.phase_seg = ctk.CTkSegmentedButton(
+            body, values=["Charge", "Discharge"], variable=self.phase_var,
+            command=self._on_phase, font=theme.font_sans(13, "bold"),
+            selected_color=theme.ACCENT, selected_hover_color=theme.ACCENT_HOVER,
+            unselected_color=theme.MUTED, unselected_hover_color=theme.TEXT,
+            text_color="#ffffff")       # #1 white text, legible on both segments
+        self.phase_seg.pack(fill="x")
+
         # Cycle entry
-        ctk.CTkLabel(body, text="Cycle", font=theme.font_sans(12), text_color=theme.MUTED,
-                     anchor="w").pack(fill="x", pady=(10, 2))
+        slabel("Cycle", pady=(10, 2))
         cyc_row = ctk.CTkFrame(body, fg_color="transparent")
         cyc_row.pack(fill="x")
         self._arrow(cyc_row, "◀", self._prev_cycle).pack(side="left")
-        self.cycle_entry = ctk.CTkEntry(cyc_row, textvariable=self.cycle_entry_var, width=56,
+        self.cycle_entry = ctk.CTkEntry(cyc_row, textvariable=self.cycle_entry_var, width=64,
                                         font=theme.font_mono(13), corner_radius=theme.RADIUS_INPUT,
                                         justify="center")
         self.cycle_entry.pack(side="left", padx=4)
@@ -124,29 +161,17 @@ class RegressionSection(ctk.CTkFrame):
                       fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
                       font=theme.font_sans(12, "bold"), corner_radius=theme.RADIUS_INPUT
                       ).pack(side="left", padx=(6, 0))
-        self.cycle_hint = ctk.CTkLabel(body, text="", font=theme.font_sans(11),
-                                       text_color=theme.FAINT, anchor="w", justify="left",
+        self.cycle_hint = ctk.CTkLabel(body, text="", font=theme.font_sans(12),
+                                       text_color=theme.MUTED, anchor="w", justify="left",
                                        wraplength=320)
         self.cycle_hint.pack(fill="x")
 
-        # Phase toggle
-        ctk.CTkLabel(body, text="Phase", font=theme.font_sans(12), text_color=theme.MUTED,
-                     anchor="w").pack(fill="x", pady=(10, 2))
-        self.phase_seg = ctk.CTkSegmentedButton(
-            body, values=["Charge", "Discharge"], variable=self.phase_var,
-            command=self._on_phase, font=theme.font_sans(13),
-            selected_color=theme.ACCENT, selected_hover_color=theme.ACCENT_HOVER,
-            unselected_color=theme.BG, unselected_hover_color=theme.ACCENT_TINT,
-            text_color=theme.TEXT)
-        self.phase_seg.pack(fill="x")
-
         # Pulse entry
-        ctk.CTkLabel(body, text="Pulse", font=theme.font_sans(12), text_color=theme.MUTED,
-                     anchor="w").pack(fill="x", pady=(10, 2))
+        slabel("Pulse", pady=(10, 2))
         pl_row = ctk.CTkFrame(body, fg_color="transparent")
         pl_row.pack(fill="x")
         self._arrow(pl_row, "◀", self._prev_pulse).pack(side="left")
-        self.pulse_entry = ctk.CTkEntry(pl_row, textvariable=self.pulse_entry_var, width=56,
+        self.pulse_entry = ctk.CTkEntry(pl_row, textvariable=self.pulse_entry_var, width=64,
                                         font=theme.font_mono(13), corner_radius=theme.RADIUS_INPUT,
                                         justify="center")
         self.pulse_entry.pack(side="left", padx=4)
@@ -156,50 +181,74 @@ class RegressionSection(ctk.CTkFrame):
                       fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
                       font=theme.font_sans(12, "bold"), corner_radius=theme.RADIUS_INPUT
                       ).pack(side="left", padx=(6, 0))
-        self.pulse_hint = ctk.CTkLabel(body, text="", font=theme.font_sans(11),
-                                       text_color=theme.FAINT, anchor="w", justify="left",
+        self.pulse_hint = ctk.CTkLabel(body, text="", font=theme.font_sans(12),
+                                       text_color=theme.MUTED, anchor="w", justify="left",
                                        wraplength=320)
         self.pulse_hint.pack(fill="x")
 
         # Regression window (live values you type, then Apply/Save at a scope)
-        ctk.CTkLabel(body, text="Regression window", font=theme.font_sans(12),
-                     text_color=theme.MUTED, anchor="w").pack(fill="x", pady=(12, 2))
-        ctk.CTkOptionMenu(body, variable=self.mode_var, values=["time", "index"],
-                          command=self._on_mode, fg_color=theme.SURFACE, text_color=theme.TEXT,
-                          button_color=theme.ACCENT, button_hover_color=theme.ACCENT_HOVER,
-                          font=theme.font_sans(13), dropdown_font=theme.font_sans(13)
-                          ).pack(fill="x")
+        slabel("Regression window", pady=(12, 2))
+        self.mode_menu = ctk.CTkComboBox(
+            body, variable=self.mode_var, values=MODE_VALUES, state="readonly",
+            command=self._on_mode,
+            fg_color=theme.ACCENT, text_color="#ffffff",
+            border_color=theme.ACCENT_HOVER, border_width=1,
+            button_color=theme.ACCENT_HOVER, button_hover_color=theme.ACCENT,
+            font=theme.font_sans(13), dropdown_font=theme.font_sans(13),
+            dropdown_fg_color=theme.SURFACE, dropdown_text_color=theme.TEXT,
+            dropdown_hover_color=theme.ACCENT_TINT)
+        self.mode_menu.pack(fill="x")
         win_row = ctk.CTkFrame(body, fg_color="transparent")
         win_row.pack(fill="x", pady=(4, 0))
-        ctk.CTkLabel(win_row, text="start", font=theme.font_sans(11), text_color=theme.FAINT,
+        ctk.CTkLabel(win_row, text="start", font=theme.font_sans(12), text_color=theme.MUTED,
                      width=36, anchor="w").pack(side="left")
         self.start_entry = ctk.CTkEntry(win_row, textvariable=self.start_var, width=70,
                                         font=theme.font_mono(12), corner_radius=theme.RADIUS_INPUT)
         self.start_entry.pack(side="left", padx=(0, 8))
-        ctk.CTkLabel(win_row, text="end", font=theme.font_sans(11), text_color=theme.FAINT,
+        ctk.CTkLabel(win_row, text="end", font=theme.font_sans(12), text_color=theme.MUTED,
                      width=28, anchor="w").pack(side="left")
         self.end_entry = ctk.CTkEntry(win_row, textvariable=self.end_var, width=70,
                                       font=theme.font_mono(12), corner_radius=theme.RADIUS_INPUT)
         self.end_entry.pack(side="left")
         self.start_entry.bind("<Return>", lambda e: self._apply_pulse())
         self.end_entry.bind("<Return>", lambda e: self._apply_pulse())
-        ctk.CTkLabel(body, text="time: seconds  |  index: 1-based points",
-                     font=theme.font_sans(11), text_color=theme.FAINT, anchor="w").pack(fill="x")
+        self.win_units = ctk.CTkLabel(
+            body, text="", font=theme.font_sans(12), text_color=theme.MUTED, anchor="w")
+        self.win_units.pack(fill="x")
+        self._update_units_hint()
 
         # Apply / Save rows (pulse, cycle, all cycles)
         self._apply_save_row(body, "Apply → pulse", self._apply_pulse, self._save_pulse)
         self._apply_save_row(body, "Apply → cycle", self._apply_cycle, self._save_cycle)
         self._apply_save_row(body, "Apply → all cycles", self._apply_all, self._save_all)
 
-        ctk.CTkButton(body, text="Restore defaults", command=self._restore_defaults,
+        ctk.CTkButton(body, text="Restore defaults", command=self._restore_defaults, height=30,
                       fg_color=theme.SURFACE, text_color=theme.MUTED, border_color=theme.BORDER,
-                      border_width=1, hover_color=theme.BG, font=theme.font_sans(12),
-                      corner_radius=theme.RADIUS_INPUT).pack(fill="x", pady=(4, 0))
+                      border_width=1, hover_color=theme.BG, font=theme.font_sans(13),  # #4 larger
+                      corner_radius=theme.RADIUS_INPUT).pack(fill="x", pady=(6, 0))
 
         ctk.CTkButton(body, text="Overall check (R² all cycles)", command=self._overall_check,
                       fg_color=theme.SURFACE, text_color=theme.ACCENT, border_color=theme.ACCENT,
                       border_width=1, hover_color=theme.ACCENT_TINT, font=theme.font_sans(13),
                       corner_radius=theme.RADIUS_INPUT).pack(fill="x", pady=(10, 0))
+
+        # R² plot axis limits
+        ctk.CTkLabel(body, text="R² plot axis limits  (blank = auto)",
+                     font=theme.font_sans(12, "bold"), text_color=theme.TEXT,
+                     anchor="w").pack(fill="x", pady=(14, 2))
+        self._limit_row(body, "X", self.r2_xmin_var, self.r2_xmax_var)
+        self._limit_row(body, "R²", self.r2_ymin_var, self.r2_ymax_var)
+        r2lim_btns = ctk.CTkFrame(body, fg_color="transparent")
+        r2lim_btns.pack(fill="x", pady=(4, 0))
+        ctk.CTkButton(r2lim_btns, text="Apply", command=self._plot, height=30,
+                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
+                      font=theme.font_sans(12, "bold"), corner_radius=theme.RADIUS_INPUT
+                      ).pack(side="left", fill="x", expand=True, padx=(0, 3))
+        ctk.CTkButton(r2lim_btns, text="Auto", command=self._r2_auto_limits, height=30,
+                      fg_color=theme.SURFACE, text_color=theme.ACCENT, border_color=theme.ACCENT,
+                      border_width=1, hover_color=theme.ACCENT_TINT, font=theme.font_sans(12),
+                      corner_radius=theme.RADIUS_INPUT).pack(side="left", fill="x", expand=True,
+                                                             padx=(3, 0))
 
         self.info = ctk.CTkLabel(body, text="", font=theme.font_mono(12), text_color=theme.MUTED,
                                  anchor="w", justify="left", wraplength=320)
@@ -222,24 +271,61 @@ class RegressionSection(ctk.CTkFrame):
         self.panel.pack(fill="both", expand=True)
 
     def _arrow(self, parent, text, command):
-        return ctk.CTkButton(parent, text=text, width=40, height=30, command=command,
+        return ctk.CTkButton(parent, text=text, width=44, height=30, command=command,
                              fg_color=theme.SURFACE, text_color=theme.ACCENT,
                              border_color=theme.ACCENT, border_width=1,
                              hover_color=theme.ACCENT_TINT, font=theme.font_sans(13, "bold"),
                              corner_radius=theme.RADIUS_INPUT)
 
     def _apply_save_row(self, parent, label, apply_cmd, save_cmd):
+        # Grid with two equal, uniform columns so every Apply button is the same
+        # width and every Save button is the same width across all three rows
+        # (pack+expand let the longest label - "all cycles" - stretch its row). #6
         r = ctk.CTkFrame(parent, fg_color="transparent")
         r.pack(fill="x", pady=2)
-        ctk.CTkButton(r, text=label, command=apply_cmd, height=30, fg_color=theme.ACCENT,
+        r.grid_columnconfigure(0, weight=1, uniform="applysave")
+        r.grid_columnconfigure(1, weight=1, uniform="applysave")
+        ctk.CTkButton(r, text=label, command=apply_cmd, height=30, width=0, fg_color=theme.ACCENT,
                       hover_color=theme.ACCENT_HOVER, font=theme.font_sans(12, "bold"),
-                      corner_radius=theme.RADIUS_INPUT).pack(side="left", fill="x", expand=True,
+                      corner_radius=theme.RADIUS_INPUT).grid(row=0, column=0, sticky="ew",
                                                              padx=(0, 3))
-        ctk.CTkButton(r, text="Save", command=save_cmd, height=30,
+        ctk.CTkButton(r, text="Save", command=save_cmd, height=30, width=0,
                       fg_color=theme.SURFACE, text_color=theme.ACCENT, border_color=theme.ACCENT,
                       border_width=1, hover_color=theme.ACCENT_TINT, font=theme.font_sans(12),
-                      corner_radius=theme.RADIUS_INPUT).pack(side="left", fill="x", expand=True,
+                      corner_radius=theme.RADIUS_INPUT).grid(row=0, column=1, sticky="ew",
                                                              padx=(3, 0))
+
+    def _limit_row(self, parent, label, lo_var, hi_var):
+        r = ctk.CTkFrame(parent, fg_color="transparent")
+        r.pack(fill="x", pady=1)
+        ctk.CTkLabel(r, text=label, font=theme.font_sans(12), text_color=theme.MUTED,
+                     width=22, anchor="w").pack(side="left")
+        ctk.CTkEntry(r, textvariable=lo_var, placeholder_text="min", width=80,
+                     font=theme.font_mono(12), corner_radius=theme.RADIUS_INPUT
+                     ).pack(side="left", padx=(4, 6))
+        ctk.CTkEntry(r, textvariable=hi_var, placeholder_text="max", width=80,
+                     font=theme.font_mono(12), corner_radius=theme.RADIUS_INPUT).pack(side="left")
+
+    def _apply_r2_limits(self, ax):
+        """Apply any user-set R²-plot axis limits to ``ax``; blank fields stay auto.
+        Called at the end of both R² views (per-cycle and overall)."""
+        def _val(var):
+            s = var.get().strip()
+            try:
+                return float(s) if s else None
+            except ValueError:
+                return None
+        xlo, xhi = _val(self.r2_xmin_var), _val(self.r2_xmax_var)
+        ylo, yhi = _val(self.r2_ymin_var), _val(self.r2_ymax_var)
+        if xlo is not None or xhi is not None:
+            ax.set_xlim(left=xlo, right=xhi)
+        if ylo is not None or yhi is not None:
+            ax.set_ylim(bottom=ylo, top=yhi)
+
+    def _r2_auto_limits(self):
+        for v in (self.r2_xmin_var, self.r2_xmax_var, self.r2_ymin_var, self.r2_ymax_var):
+            v.set("")
+        self._plot()
 
     def _build_settings(self, parent):
         pad = 8
@@ -382,14 +468,11 @@ class RegressionSection(ctk.CTkFrame):
         if src.endswith("saved"):
             mode, s, e = spec
             self.mode_var.set(mode)
-            self.start_var.set(f"{s:g}")
-            self.end_var.set(f"{e:g}")
-        elif self.mode_var.get() == "time":
-            self.start_var.set(str(TIME_START))
-            self.end_var.set(str(TIME_END))
         else:
-            self.start_var.set(str(INDEX_START))
-            self.end_var.set(str(INDEX_END))
+            s, e = _mode_defaults(self.mode_var.get())
+        self.start_var.set(f"{s:g}")
+        self.end_var.set(f"{e:g}")
+        self._update_units_hint()
 
     # ---- navigation -------------------------------------------------------
     def _current_cycle(self):
@@ -483,12 +566,17 @@ class RegressionSection(ctk.CTkFrame):
         self._plot()
 
     def _on_mode(self, _value=None):
-        if self.mode_var.get() == "time":
-            self.start_var.set(str(TIME_START))
-            self.end_var.set(str(TIME_END))
-        else:
-            self.start_var.set(str(INDEX_START))
-            self.end_var.set(str(INDEX_END))
+        s, e = _mode_defaults(self.mode_var.get())
+        self.start_var.set(f"{s:g}")
+        self.end_var.set(f"{e:g}")
+        self._update_units_hint()
+
+    def _update_units_hint(self):
+        hints = {
+            MODE_TIME: "time: seconds  ·  e.g. 0.1 – 1.0 s",
+            MODE_INDEX: "index: 1-based sample points  ·  e.g. 2 – 10",
+        }
+        self.win_units.configure(text=hints.get(self.mode_var.get(), ""))
 
     # ---- apply (preview) / save (persist) --------------------------------
     def _cur_key_pulse(self):
@@ -544,12 +632,9 @@ class RegressionSection(ctk.CTkFrame):
         self.saved.clear()
         self.preview.clear()
         self._overall = None
-        if self._mode() == "time":
-            self.start_var.set(str(TIME_START))
-            self.end_var.set(str(TIME_END))
-        else:
-            self.start_var.set(str(INDEX_START))
-            self.end_var.set(str(INDEX_END))
+        s, e = _mode_defaults(self._mode())
+        self.start_var.set(f"{s:g}")
+        self.end_var.set(f"{e:g}")
         self._sync_window_entries()
         self._update_labels()
         self._plot()
@@ -571,15 +656,14 @@ class RegressionSection(ctk.CTkFrame):
         other pulses' R²)."""
         s, e = self._bounds()
         if s is None:
-            s, e = (TIME_START, TIME_END) if self._mode() == "time" else (INDEX_START, INDEX_END)
+            s, e = _mode_defaults(self._mode())
         return (self._mode(), s, e)
 
     def _default_spec(self):
         """The default window for the current mode - the stable fallback used by
         every pulse that has no applied/saved window of its own."""
-        if self._mode() == "time":
-            return ("time", TIME_START, TIME_END)
-        return ("index", INDEX_START, INDEX_END)
+        s, e = _mode_defaults(self._mode())
+        return (self._mode(), s, e)
 
     def _win_lookup(self, cyc, phase, pulse):
         """(spec, source) for the most specific window that applies to a pulse:
@@ -601,7 +685,9 @@ class RegressionSection(ctk.CTkFrame):
     @staticmethod
     def _fmt_window(spec):
         mode, s, e = spec
-        return f"{s:g}–{e:g} s" if mode == "time" else f"{int(round(s))}–{int(round(e))} pt"
+        if mode == MODE_TIME:
+            return f"{s:g}–{e:g} s"
+        return f"{int(round(s))}–{int(round(e))} pt"
 
     def _phase_data(self):
         if self.reg is None:
@@ -803,10 +889,13 @@ class RegressionSection(ctk.CTkFrame):
             return
         r2s = self._cycle_r2s(self._current_cycle(), self.phase, data, self.pulse_list)
         xs = range(1, len(self.pulse_list) + 1)
-        ax.plot(xs, r2s, color="black", marker="o", linestyle="-", linewidth=1,
+        # Phase-coloured R² trace (blue = charge, red = discharge) to match the
+        # single-pulse and overall plots. #3
+        ax.plot(xs, r2s, color=color, marker="o", linestyle="-", linewidth=1,
                 markersize=4, label="R²")
         sel_r2 = r2s[self.pulse_idx] if self.pulse_idx < len(r2s) else np.nan
-        ax.plot(self.pulse_idx + 1, sel_r2, "o", color=color, markersize=9, label="selected")
+        ax.plot(self.pulse_idx + 1, sel_r2, "o", color=color, markersize=10,
+                markeredgecolor="black", markeredgewidth=1.3, zorder=5, label="selected")
         ax.set_xlabel("Pulse #", fontsize=12)
         ax.set_ylabel("R²", fontsize=12)
         ax.grid(True, alpha=0.3)
@@ -815,6 +904,7 @@ class RegressionSection(ctk.CTkFrame):
         leg = ax.legend(loc="best", fontsize=9)
         if leg is not None:
             leg.set_draggable(True)
+        self._apply_r2_limits(ax)
 
     def _plot_overall(self, ax):
         charge = self._overall["charge"]
@@ -878,6 +968,7 @@ class RegressionSection(ctk.CTkFrame):
         if leg is not None:
             leg.set_draggable(True)
         ax.set_title("R² across all cycles", fontsize=11, fontweight="bold")
+        self._apply_r2_limits(ax)       # user limits override the auto x-range above
 
     # ---- export -----------------------------------------------------------
     def _export(self):

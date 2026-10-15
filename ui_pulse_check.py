@@ -56,7 +56,8 @@ class PulseCheckSection(ctk.CTkFrame):
 
         self.file_var = tk.StringVar(value="")
         self.phase_var = tk.StringVar(value="Charge")
-        self.show_titles_var = tk.BooleanVar(value=False)
+        self.cycle_entry_var = tk.StringVar(value="")
+        self.pulse_entry_var = tk.StringVar(value="")
 
         # Export settings
         self.fig_w_var = tk.StringVar(value="10")
@@ -69,68 +70,83 @@ class PulseCheckSection(ctk.CTkFrame):
 
     # ---- layout -----------------------------------------------------------
     def _build(self):
-        card, body = theme.card(self, "Pulse check - controls", width=theme.CONTROL_W)
+        card, outer = theme.card(self, "Pulse verification - controls", width=theme.CONTROL_W)
         card.pack(side="left", fill="y", padx=(0, theme.GAP))
         card.pack_propagate(False)
+        body = ctk.CTkFrame(outer, fg_color="transparent")       # #2 breathing room
+        body.pack(fill="both", expand=True, padx=(2, 12))
 
-        # File selector (independent per tab)
-        ctk.CTkLabel(body, text="File", font=theme.font_sans(12), text_color=theme.MUTED,
-                     anchor="w").pack(fill="x")
-        self.file_menu = ctk.CTkOptionMenu(
-            body, variable=self.file_var, values=["(no files)"], command=self._on_file_change,
-            fg_color=theme.SURFACE, text_color=theme.TEXT, button_color=theme.ACCENT,
-            button_hover_color=theme.ACCENT_HOVER, font=theme.font_sans(13),
-            dropdown_font=theme.font_sans(13))
+        def slabel(text, pady=(0, 2)):                            # #1 bold/dark labels
+            ctk.CTkLabel(body, text=text, font=theme.font_sans(13, "bold"),
+                         text_color=theme.TEXT, anchor="w").pack(fill="x", pady=pady)
+
+        # File selector (teal dropdown, same as Data loading)     # #1
+        slabel("File")
+        self.file_menu = ctk.CTkComboBox(
+            body, variable=self.file_var, values=["(no files)"], state="readonly",
+            command=self._on_file_change,
+            fg_color=theme.ACCENT, text_color="#ffffff",
+            border_color=theme.ACCENT_HOVER, border_width=1,
+            button_color=theme.ACCENT_HOVER, button_hover_color=theme.ACCENT,
+            font=theme.font_sans(13), dropdown_font=theme.font_sans(13),
+            dropdown_fg_color=theme.SURFACE, dropdown_text_color=theme.TEXT,
+            dropdown_hover_color=theme.ACCENT_TINT)
         self.file_menu.pack(fill="x", pady=(2, 0))
         ctk.CTkLabel(body, text="(files are loaded in Data loading)",
-                     font=theme.font_sans(11), text_color=theme.FAINT,
+                     font=theme.font_sans(12), text_color=theme.MUTED,
                      anchor="w").pack(fill="x", pady=(0, 2))
 
-        # Cycle navigation
-        ctk.CTkLabel(body, text="Cycle", font=theme.font_sans(12), text_color=theme.MUTED,
-                     anchor="w").pack(fill="x", pady=(10, 2))
-        cyc_row = ctk.CTkFrame(body, fg_color="transparent")
-        cyc_row.pack(fill="x")
-        self.cyc_prev = self._nav_button(cyc_row, "◀", self._prev_cycle)
-        self.cyc_prev.pack(side="left")
-        self.cycle_label = ctk.CTkLabel(cyc_row, text="-", font=theme.font_mono(12),
-                                        text_color=theme.TEXT)
-        self.cycle_label.pack(side="left", fill="x", expand=True)
-        self.cyc_next = self._nav_button(cyc_row, "▶", self._next_cycle)
-        self.cyc_next.pack(side="left")
-
-        # Phase toggle
-        ctk.CTkLabel(body, text="Phase", font=theme.font_sans(12), text_color=theme.MUTED,
-                     anchor="w").pack(fill="x", pady=(10, 2))
+        # Phase selector - below the file, above cycle            # #3
+        slabel("Phase", pady=(10, 2))
         self.phase_seg = ctk.CTkSegmentedButton(
             body, values=["Charge", "Discharge"], variable=self.phase_var,
-            command=self._on_phase, font=theme.font_sans(13),
+            command=self._on_phase, font=theme.font_sans(13, "bold"),
             selected_color=theme.ACCENT, selected_hover_color=theme.ACCENT_HOVER,
-            unselected_color=theme.BG, unselected_hover_color=theme.ACCENT_TINT,
-            text_color=theme.TEXT)
+            unselected_color=theme.MUTED, unselected_hover_color=theme.TEXT,
+            text_color="#ffffff")       # #1 white text, legible on both segments
         self.phase_seg.pack(fill="x")
 
-        # Pulse navigation
-        ctk.CTkLabel(body, text="Pulse", font=theme.font_sans(12), text_color=theme.MUTED,
-                     anchor="w").pack(fill="x", pady=(10, 2))
+        # Cycle navigation - arrows + typed entry + Go            # #4
+        slabel("Cycle", pady=(10, 2))
+        cyc_row = ctk.CTkFrame(body, fg_color="transparent")
+        cyc_row.pack(fill="x")
+        self._nav_button(cyc_row, "◀", self._prev_cycle).pack(side="left")
+        self.cycle_entry = ctk.CTkEntry(cyc_row, textvariable=self.cycle_entry_var, width=64,
+                                        font=theme.font_mono(13), corner_radius=theme.RADIUS_INPUT,
+                                        justify="center")
+        self.cycle_entry.pack(side="left", padx=4)
+        self.cycle_entry.bind("<Return>", lambda e: self._go_cycle())
+        self._nav_button(cyc_row, "▶", self._next_cycle).pack(side="left")
+        ctk.CTkButton(cyc_row, text="Go", command=self._go_cycle, width=48,
+                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
+                      font=theme.font_sans(12, "bold"), corner_radius=theme.RADIUS_INPUT
+                      ).pack(side="left", padx=(6, 0))
+        self.cycle_hint = ctk.CTkLabel(body, text="", font=theme.font_sans(12),
+                                       text_color=theme.MUTED, anchor="w")
+        self.cycle_hint.pack(fill="x")
+
+        # Pulse navigation - arrows + typed entry + Go            # #4
+        slabel("Pulse", pady=(10, 2))
         pl_row = ctk.CTkFrame(body, fg_color="transparent")
         pl_row.pack(fill="x")
-        self.pulse_prev = self._nav_button(pl_row, "◀", self._prev_pulse)
-        self.pulse_prev.pack(side="left")
-        self.pulse_label = ctk.CTkLabel(pl_row, text="-", font=theme.font_mono(12),
-                                        text_color=theme.TEXT)
-        self.pulse_label.pack(side="left", fill="x", expand=True)
-        self.pulse_next = self._nav_button(pl_row, "▶", self._next_pulse)
-        self.pulse_next.pack(side="left")
+        self._nav_button(pl_row, "◀", self._prev_pulse).pack(side="left")
+        self.pulse_entry = ctk.CTkEntry(pl_row, textvariable=self.pulse_entry_var, width=64,
+                                        font=theme.font_mono(13), corner_radius=theme.RADIUS_INPUT,
+                                        justify="center")
+        self.pulse_entry.pack(side="left", padx=4)
+        self.pulse_entry.bind("<Return>", lambda e: self._go_pulse())
+        self._nav_button(pl_row, "▶", self._next_pulse).pack(side="left")
+        ctk.CTkButton(pl_row, text="Go", command=self._go_pulse, width=48,
+                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
+                      font=theme.font_sans(12, "bold"), corner_radius=theme.RADIUS_INPUT
+                      ).pack(side="left", padx=(6, 0))
+        self.pulse_hint = ctk.CTkLabel(body, text="", font=theme.font_sans(12),
+                                       text_color=theme.MUTED, anchor="w")
+        self.pulse_hint.pack(fill="x")
 
-        ctk.CTkCheckBox(body, text="Show plot titles", variable=self.show_titles_var,
-                        command=self._plot, font=theme.font_sans(13), text_color=theme.TEXT,
-                        fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER
-                        ).pack(anchor="w", pady=(12, 0))
-
-        # Results readout
+        # Results readout (titles are always shown on the plots - #5)
         self.info = ctk.CTkLabel(body, text="", font=theme.font_mono(12), text_color=theme.MUTED,
-                                 anchor="w", justify="left", wraplength=300)
+                                 anchor="w", justify="left", wraplength=320)
         self.info.pack(fill="x", pady=(10, 0))
 
         # Collapsible export panel
@@ -145,16 +161,16 @@ class PulseCheckSection(ctk.CTkFrame):
         self._build_settings(self.settings_frame)
 
         # Plots
-        plot_card, plot_body = theme.card(self, "Pulse check - plots")
+        plot_card, plot_body = theme.card(self, "Pulse verification - plots")
         plot_card.pack(side="left", fill="both", expand=True)
         self.panel = PlotPanel(plot_body, figsize=(10, 8))
         self.panel.pack(fill="both", expand=True)
 
     def _nav_button(self, parent, text, command):
-        return ctk.CTkButton(parent, text=text, width=46, height=30, command=command,
+        return ctk.CTkButton(parent, text=text, width=44, height=30, command=command,
                              fg_color=theme.SURFACE, text_color=theme.ACCENT,
                              border_color=theme.ACCENT, border_width=1,
-                             hover_color=theme.ACCENT_TINT, font=theme.font_sans(14, "bold"),
+                             hover_color=theme.ACCENT_TINT, font=theme.font_sans(13, "bold"),
                              corner_radius=theme.RADIUS_INPUT)
 
     def _build_settings(self, parent):
@@ -227,8 +243,10 @@ class PulseCheckSection(ctk.CTkFrame):
             self.pulse_list = []
             self.sel_file = None
             self.file_var.set("")
-            self.cycle_label.configure(text="-")
-            self.pulse_label.configure(text="-")
+            self.cycle_entry_var.set("")
+            self.pulse_entry_var.set("")
+            self.cycle_hint.configure(text="")
+            self.pulse_hint.configure(text="")
             self.info.configure(text="Load a file in the Data loading section first.")
             self._clear_plot()
             return
@@ -304,19 +322,64 @@ class PulseCheckSection(ctk.CTkFrame):
             self._update_labels()
             self._plot()
 
+    def _fmt_available(self, values):
+        """Compact hint for the list of selectable cycle / pulse numbers."""
+        vals = list(values)
+        if not vals:
+            return ""
+        if len(vals) <= 12:
+            return "available: " + ", ".join(str(v) for v in vals)
+        return f"available: {vals[0]}…{vals[-1]}  ({len(vals)} total)"
+
+    def _go_cycle(self):
+        """Jump to the cycle number typed in the entry."""
+        raw = self.cycle_entry_var.get().strip()
+        try:
+            target = int(float(raw))
+        except (ValueError, TypeError):
+            self._update_labels()
+            return
+        if target in self.cycle_list:
+            self.cycle_idx = self.cycle_list.index(target)
+            self.pulse_idx = 0
+            self._analyze_current_cycle()
+        else:
+            self._update_labels()   # restore the valid value
+
+    def _go_pulse(self):
+        """Jump to the pulse number typed in the entry."""
+        raw = self.pulse_entry_var.get().strip()
+        try:
+            target = int(float(raw))
+        except (ValueError, TypeError):
+            self._update_labels()
+            return
+        if target in self.pulse_list:
+            self.pulse_idx = self.pulse_list.index(target)
+            self._update_labels()
+            self._plot()
+        else:
+            self._update_labels()   # restore the valid value
+
     def _update_labels(self):
         cyc = self._current_cycle()
         if cyc is not None:
-            self.cycle_label.configure(
-                text=f"Cycle {cyc}   ({self.cycle_idx + 1}/{len(self.cycle_list)})")
+            self.cycle_entry_var.set(str(cyc))
+            self.cycle_hint.configure(
+                text=f"{self.cycle_idx + 1} / {len(self.cycle_list)}   ·   "
+                     + self._fmt_available(self.cycle_list))
         else:
-            self.cycle_label.configure(text="-")
+            self.cycle_entry_var.set("")
+            self.cycle_hint.configure(text="")
         if self.pulse_list:
             pn = self.pulse_list[self.pulse_idx]
-            self.pulse_label.configure(
-                text=f"Pulse {pn}   ({self.pulse_idx + 1}/{len(self.pulse_list)})")
+            self.pulse_entry_var.set(str(pn))
+            self.pulse_hint.configure(
+                text=f"{self.pulse_idx + 1} / {len(self.pulse_list)}   ·   "
+                     + self._fmt_available(self.pulse_list))
         else:
-            self.pulse_label.configure(text=f"no {self.phase} pulses")
+            self.pulse_entry_var.set("")
+            self.pulse_hint.configure(text=f"no {self.phase} pulses")
 
         if self.analysis is not None:
             nc = len(self.analysis.charge_pulses)
@@ -362,11 +425,16 @@ class PulseCheckSection(ctk.CTkFrame):
         if self.df_raw is None or self._current_cycle() is None:
             self.panel.refresh()
             return
-        ax_over = fig.add_subplot(211)
-        ax_det = fig.add_subplot(212)
+        # Top: whole-cycle overview (full width). Bottom: the selected pulse's
+        # full detail (left) and a zoom on its rest-period relaxation (right).
+        gs = fig.add_gridspec(2, 2)
+        ax_over = fig.add_subplot(gs[0, :])
+        ax_det = fig.add_subplot(gs[1, 0])
+        ax_rest = fig.add_subplot(gs[1, 1])
         self._plot_overview(ax_over)
         self._plot_detail(ax_det)
-        fig.tight_layout()
+        self._plot_rest(ax_rest)
+        fig.tight_layout(w_pad=1.5)
         self.panel.refresh()
 
     def _plot_overview(self, ax):
@@ -427,8 +495,7 @@ class PulseCheckSection(ctk.CTkFrame):
         ax.set_xlabel("Time (h)", fontsize=12)
         ax.set_ylabel("Voltage (V)", fontsize=12)
         ax.grid(True, alpha=0.3)
-        if self.show_titles_var.get():
-            ax.set_title(f"Cycle {cyc} overview", fontsize=12, fontweight="bold")
+        ax.set_title(f"Cycle {cyc} overview", fontsize=12, fontweight="bold")
         leg = ax.legend(loc="best", fontsize=9)
         if leg is not None:
             leg.set_draggable(True)
@@ -488,13 +555,60 @@ class PulseCheckSection(ctk.CTkFrame):
                            edgecolor="black", linewidth=0.8, zorder=10, label="V0")
 
         ax.grid(True, alpha=0.3)
-        if self.show_titles_var.get():
-            pn = self.pulse_list[self.pulse_idx]
-            ax.set_title(f"{self.phase.capitalize()} pulse {pn}", fontweight="bold")
+        pn = self.pulse_list[self.pulse_idx]
+        ax.set_title(f"{self.phase.capitalize()} pulse {pn}", fontweight="bold")
 
         h1, l1 = ax.get_legend_handles_labels()
         h2, l2 = ax2.get_legend_handles_labels()
         leg = ax.legend(h1 + h2, l1 + l2, loc="best", fontsize=8)
+        if leg is not None:
+            leg.set_draggable(True)
+
+    def _plot_rest(self, ax):
+        """Zoom on the selected pulse's rest-period relaxation: voltage vs time
+        after the current switches off, with V0/t0 marked. This is the raw
+        segment the ΔV-vs-√t regression (Regression section) is computed on."""
+        pdf = self._current_pulse_df()
+        color = C_CHARGE if self.phase == CHARGE else C_DISCHARGE
+        if pdf is None:
+            ax.text(0.5, 0.5, f"No {self.phase} pulse selected", ha="center",
+                    va="center", transform=ax.transAxes, color=theme.MUTED)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            return
+
+        rest = pdf[pdf["I/mA"] == 0]
+        if len(rest) == 0:
+            ax.text(0.5, 0.5, "No rest period", ha="center", va="center",
+                    transform=ax.transAxes, color=theme.MUTED)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            return
+
+        # Measure relaxation time from t0 (last active sample before the rest).
+        t0 = v0 = None
+        if "V0" in pdf.columns and "t0" in pdf.columns:
+            vt = pdf.dropna(subset=["V0", "t0"])
+            if len(vt):
+                t0 = float(vt["t0"].iloc[0])
+                v0 = float(vt["V0"].iloc[0])
+        t = rest["t/s"].to_numpy()
+        t_ref = t0 if t0 is not None else t[0]
+        ax.plot(t - t_ref, rest["E/V"].to_numpy(), color=color, marker="o",
+                markersize=3, linewidth=1.5, label="Rest voltage")
+        if v0 is not None:
+            ax.plot(0.0, v0, "o", color=C_V0, markersize=8, markeredgecolor="black",
+                    markeredgewidth=0.8, zorder=10, label="V0")
+
+        ax.set_xlabel("Time since interruption (s)")
+        ax.set_ylabel("Voltage (V)", color=color)
+        ax.tick_params(axis="y", labelcolor=color)
+        ax.grid(True, alpha=0.3)
+        dur = (t[-1] - t[0]) if len(t) > 1 else 0.0
+        pn = self.pulse_list[self.pulse_idx]
+        ax.set_title(f"{self.phase.capitalize()} pulse {pn} — rest ({dur:.1f} s)",
+                     fontweight="bold", fontsize=11)
+        leg = ax.legend(loc="best", fontsize=8)
         if leg is not None:
             leg.set_draggable(True)
 

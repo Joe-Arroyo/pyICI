@@ -76,63 +76,78 @@ class DataLoadingSection(ctk.CTkFrame):
 
     # ---- layout -----------------------------------------------------------
     def _build(self):
-        controls_card, body = theme.card(self, "Data loading - controls", width=theme.CONTROL_W)
+        controls_card, outer = theme.card(self, "Data loading - controls", width=theme.CONTROL_W)
         controls_card.pack(side="left", fill="y", padx=(0, theme.GAP))
         controls_card.pack_propagate(False)
+        # #6 - a little inset so controls don't span the full card width.
+        body = ctk.CTkFrame(outer, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=(2, 12))
 
-        ctk.CTkLabel(body, text="Data file", font=theme.font_sans(12),
-                     text_color=theme.MUTED, anchor="w").pack(fill="x")
+        # #7 - section labels: bigger, bold, dark (easily readable).
+        def slabel(text, pady=(0, 2)):
+            ctk.CTkLabel(body, text=text, font=theme.font_sans(13, "bold"),
+                         text_color=theme.TEXT, anchor="w").pack(fill="x", pady=pady)
+
+        slabel("Data file")
         self.path_entry = ctk.CTkEntry(body, textvariable=self.path_var,
                                        font=theme.font_sans(12), corner_radius=theme.RADIUS_INPUT)
         self.path_entry.pack(fill="x", pady=(2, 6))
         row = ctk.CTkFrame(body, fg_color="transparent")
         row.pack(fill="x")
-        ctk.CTkButton(row, text="Browse…", command=self._browse, width=100,
+        # #4 - Browse and Add file equal width.
+        ctk.CTkButton(row, text="Browse…", command=self._browse,
                       fg_color=theme.SURFACE, text_color=theme.ACCENT, border_color=theme.ACCENT,
                       border_width=1, hover_color=theme.ACCENT_TINT,
-                      font=theme.font_sans(13), corner_radius=theme.RADIUS_INPUT).pack(side="left")
+                      font=theme.font_sans(13), corner_radius=theme.RADIUS_INPUT
+                      ).pack(side="left", fill="x", expand=True, padx=(0, 3))
         ctk.CTkButton(row, text="Add file", command=self._add_file,
                       fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
                       font=theme.font_sans(13, "bold"), corner_radius=theme.RADIUS_INPUT
-                      ).pack(side="left", padx=(6, 0), fill="x", expand=True)
+                      ).pack(side="left", fill="x", expand=True, padx=(3, 0))
 
-        ctk.CTkLabel(body, text="Loaded files", font=theme.font_sans(12),
-                     text_color=theme.MUTED, anchor="w").pack(fill="x", pady=(10, 2))
+        slabel("Loaded files", pady=(10, 2))
         self.files_list = ctk.CTkScrollableFrame(body, height=110, fg_color=theme.BG,
                                                  corner_radius=theme.RADIUS_INPUT)
         self.files_list.pack(fill="x")
         self._refresh_files_list()
+        # #3 - clear everything and return to the first-open state.
+        ctk.CTkButton(body, text="Clear all", command=self._clear_all,
+                      fg_color=theme.SURFACE, text_color=theme.MUTED, border_color=theme.BORDER,
+                      border_width=1, hover_color="#f3d4d4", font=theme.font_sans(12),
+                      corner_radius=theme.RADIUS_INPUT).pack(fill="x", pady=(6, 0))
 
         ctk.CTkCheckBox(body, text="Overlay all files", variable=self.overlay_var,
                         command=self._apply_and_plot, font=theme.font_sans(13), text_color=theme.TEXT,
                         fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER
                         ).pack(anchor="w", pady=(8, 0))
 
-        # View selector
-        ctk.CTkLabel(body, text="View", font=theme.font_sans(12),
-                     text_color=theme.MUTED, anchor="w").pack(fill="x", pady=(10, 2))
-        ctk.CTkOptionMenu(body, variable=self.view_var, values=[VIEW_TIME, VIEW_CAPACITY],
-                          fg_color=theme.SURFACE, text_color=theme.TEXT, button_color=theme.ACCENT,
-                          button_hover_color=theme.ACCENT_HOVER, font=theme.font_sans(13),
-                          dropdown_font=theme.font_sans(13), command=lambda _c: self._apply_and_plot()
-                          ).pack(fill="x")
+        # #5 - View selector: bordered (contour), white text + white arrow on teal.
+        slabel("View", pady=(10, 2))
+        ctk.CTkComboBox(body, variable=self.view_var, values=[VIEW_TIME, VIEW_CAPACITY],
+                        state="readonly", command=lambda _c: self._apply_and_plot(),
+                        fg_color=theme.ACCENT, text_color="#ffffff",
+                        border_color=theme.ACCENT_HOVER, border_width=1,
+                        button_color=theme.ACCENT_HOVER, button_hover_color=theme.ACCENT,
+                        font=theme.font_sans(13), dropdown_font=theme.font_sans(13),
+                        dropdown_fg_color=theme.SURFACE, dropdown_text_color=theme.TEXT,
+                        dropdown_hover_color=theme.ACCENT_TINT).pack(fill="x")
 
-        ctk.CTkLabel(body, text="Cycles  (blank = all, e.g. 1,3,5 or 1-5)",
-                     font=theme.font_sans(11), text_color=theme.FAINT, anchor="w").pack(fill="x", pady=(10, 2))
+        slabel("Cycles", pady=(10, 2))
         self.cycle_entry = ctk.CTkEntry(body, textvariable=self.cycle_text_var,
+                                        placeholder_text="blank = all,  e.g. 1,3,5 or 1-5",
                                         font=theme.font_sans(13), corner_radius=theme.RADIUS_INPUT)
         self.cycle_entry.pack(fill="x")
         self.cycle_entry.bind("<Return>", lambda e: self._apply_and_plot())
-        self.cycle_hint = ctk.CTkLabel(body, text="", font=theme.font_sans(11),
-                                       text_color=theme.FAINT, anchor="w")
+        self.cycle_hint = ctk.CTkLabel(body, text="", font=theme.font_sans(12),
+                                       text_color=theme.MUTED, anchor="w")
         self.cycle_hint.pack(fill="x")
 
-        # Mass (for specific capacity)
-        ctk.CTkLabel(body, text="Mass (mg)  -  0 = capacity, >0 = specific",
-                     font=theme.font_sans(11), text_color=theme.FAINT, anchor="w").pack(fill="x", pady=(10, 2))
+        slabel("Mass (mg)", pady=(10, 2))
+        ctk.CTkLabel(body, text="0 = capacity  ·  >0 = specific", font=theme.font_sans(12),
+                     text_color=theme.MUTED, anchor="w").pack(fill="x")
         self.mass_entry = ctk.CTkEntry(body, textvariable=self.mass_var, font=theme.font_mono(13),
                                        corner_radius=theme.RADIUS_INPUT)
-        self.mass_entry.pack(fill="x")
+        self.mass_entry.pack(fill="x", pady=(2, 0))
         self.mass_entry.bind("<Return>", lambda e: self._apply_and_plot())
 
         ctk.CTkCheckBox(body, text="Show current (time view)", variable=self.show_current_var,
@@ -324,8 +339,10 @@ class DataLoadingSection(ctk.CTkFrame):
         self._status(f"Loading {name}…")
         result = data_loader.run_data_analysis(folder, name)
         if result is None:
-            self._status(f"Could not load {name} (>4 columns need column mapping, coming later)")
-            return
+            # Unrecognised layout -> let the user map the columns, then retry.
+            result = self._load_with_column_map(folder, name, path)
+            if result is None:
+                return
 
         self.files[name] = {
             "path": path,
@@ -342,6 +359,24 @@ class DataLoadingSection(ctk.CTkFrame):
         self._status(f"Loaded {name}: {len(result.cycle_list)} cycles, "
                      f"{len(self.files[name]['ici_starts'])} ICI starts  ({len(self.files)} file(s))")
         self._plot()
+
+    def _load_with_column_map(self, folder, name, path):
+        """Pop the column-mapping dialog for an unrecognised layout and retry the
+        load with the chosen mapping. Returns the DataLoadResult or None."""
+        from ui_column_map import ColumnMapDialog
+        columns = data_loader.peek_columns(path)
+        if not columns:
+            self._status(f"Could not read columns from {name}")
+            return None
+        dlg = ColumnMapDialog(self, columns, filename=name)
+        self.wait_window(dlg)
+        if dlg.result is None:
+            self._status("Load cancelled")
+            return None
+        result = data_loader.run_data_analysis(folder, name, column_map=dlg.result)
+        if result is None:
+            self._status(f"Could not load {name} with that column mapping")
+        return result
 
     def _refresh_files_list(self):
         for w in self.files_list.winfo_children():
@@ -389,6 +424,25 @@ class DataLoadingSection(ctk.CTkFrame):
         self._update_cycle_hint()
         self._status(f"Removed {name}")
         self._plot()
+
+    def _clear_all(self):
+        """Remove every loaded file, clear the plot, reset to the first-open state."""
+        self.files = {}
+        self.active_name = None
+        self._capacity_export_df = None
+        self.path_var.set("")
+        self.cycle_text_var.set("")
+        self.mass_var.set("0")
+        self.overlay_var.set(False)
+        self.show_current_var.set(False)
+        self.view_var.set(VIEW_TIME)
+        for v in (self.xmin_var, self.xmax_var, self.ymin_var, self.ymax_var):
+            v.set("")
+        self._refresh_files_list()
+        self._update_cycle_hint()
+        self.panel.figure.clear()
+        self.panel.refresh()
+        self._status("Cleared all files")
 
     def _update_cycle_hint(self):
         if self.active_name and self.active_name in self.files:
@@ -607,6 +661,7 @@ class DataLoadingSection(ctk.CTkFrame):
         def shade(cmap, cyc):
             return cmap(0.4 + 0.6 * (cyc - lo) / span)
 
+        drawn = []
         for cyc in cycles:
             cd = cap[cap["cycle"] == cyc]
             if len(cd) == 0:
@@ -619,11 +674,12 @@ class DataLoadingSection(ctk.CTkFrame):
             if not discharge.empty:
                 ax.plot(discharge[x_col], discharge["E/V"], "-o", color=shade(cmap_d, cyc),
                         linewidth=1.5, alpha=0.85, markersize=2)
+            drawn.append(cyc)
 
         ax.set_xlabel("Specific capacity (mAh/g)" if mass > 0 else "Capacity (mAh)")
-        if hi > lo:
-            # Two colormap legends: a Blues bar for charge and a Reds bar for
-            # discharge, each reading the cycle number.
+        if len(drawn) > 10:
+            # Many cycles: two colormap legends (Blues = charge, Reds = discharge),
+            # each reading the cycle number.
             from matplotlib.cm import ScalarMappable
             from matplotlib.colors import Normalize
             norm = Normalize(vmin=lo, vmax=hi)
@@ -635,10 +691,16 @@ class DataLoadingSection(ctk.CTkFrame):
             cb_c.set_label("Charge – cycle", rotation=270, labelpad=14)
             cb_d = fig.colorbar(sm_d, ax=ax, pad=0.10, fraction=0.05)
             cb_d.set_label("Discharge – cycle", rotation=270, labelpad=14)
-        else:
-            handles = [Line2D([0], [0], color=cmap_c(0.8), marker="o", linewidth=1.5, label="Charge"),
-                       Line2D([0], [0], color=cmap_d(0.8), marker="o", linewidth=1.5, label="Discharge")]
-            leg = ax.legend(handles=handles, loc="best", fontsize=9, ncol=2)
+        elif drawn:
+            # <= 10 cycles: a normal legend, one row per cycle showing its
+            # charge (blue) + discharge (red) swatches side by side.
+            from matplotlib.legend_handler import HandlerTuple
+            handles = [(Line2D([0], [0], color=shade(cmap_c, c), marker="o", linewidth=1.5, markersize=4),
+                        Line2D([0], [0], color=shade(cmap_d, c), marker="o", linewidth=1.5, markersize=4))
+                       for c in drawn]
+            labels = [f"Cycle {c}" for c in drawn]
+            leg = ax.legend(handles, labels, handler_map={tuple: HandlerTuple(ndivide=None)},
+                            loc="best", fontsize=9)
             if leg is not None:
                 leg.set_draggable(True)
         ctype = "specific capacity" if mass > 0 else "capacity"

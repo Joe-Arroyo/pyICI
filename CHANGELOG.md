@@ -9,23 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - New customtkinter interface — run `python main_gui_new.py` — alongside the
-  existing GUI. Four sections (Data loading, Pulse check, Regression, Kinetic
-  analysis) in a controls-left / plots-right layout, built on the same analysis
-  layer so R/k results are identical.
+  existing GUI. Four sections (Data loading, Pulse verification, Regression,
+  Kinetic analysis) in a controls-left / plots-right layout, built on the same
+  analysis layer so R/k results are identical.
   - **Multiple files**: load several datasets, choose the file per analysis tab
     independently, and overlay files for comparison (R & k in Kinetic analysis;
     voltage / capacity in Data loading).
+  - **Data loading**: voltage-vs-time and capacity / specific-capacity views
+    (all cycles, a subset, or a single cycle, with an optional current subplot),
+    with a CSV export matching the previous Classification export.
+  - **Pulse verification**: step through a cycle's pulses (charge or discharge)
+    with a whole-cycle overview that highlights the selected pulse, the pulse's
+    voltage + current detail, and a zoom on its rest-period relaxation with V0
+    marked — to check that the ICI pulses are segmented correctly.
   - **Regression**: apply a fit window to a single pulse, a whole cycle, or all
     cycles (preview), and Save to persist it per file; an "Overall check" of R²
-    across all cycles; R and k shown on the fit plot; a secondary time axis.
+    across all cycles; R and k shown on the fit plot; a secondary time axis; and
+    axis-limit controls for the R² plot.
   - **Kinetic analysis**: R and k vs voltage / capacity / specific capacity,
-    using the per-pulse windows carried over from Regression; CSV export per
-    phase (and per file when overlaid) in the established column layout; export
-    the R plot, the k plot, or both.
-  - **Data loading**: capacity / specific-capacity view with a CSV export
-    matching the previous Classification export.
+    using the per-pulse windows carried over from Regression; axis-limit
+    controls; CSV export per phase (and per file when overlaid) in the
+    established column layout; export the R plot, the k plot, or both.
   - Consistent blue (charge) / red (discharge) colour scheme that darkens with
     cycle number across the capacity, regression and kinetic plots.
+  - A shared visual theme (teal accent, bold section labels, consistent
+    dropdowns and controls, and controls columns whose scrollbar appears only
+    when needed), so the four sections look and behave the same.
 
 ### Fixed
 - Data files saved in non-UTF-8 text encodings (e.g. Windows-1252 / Latin-1, as

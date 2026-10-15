@@ -9,7 +9,7 @@ section on top of this shell.
 
 Sections:
   1. Data loading     — load data, see cycles, capacity / specific-capacity plots
-  2. Pulse check      — cycle overview with current-position highlight + pulse detail
+  2. Pulse verification — cycle overview with current-position highlight + pulse detail
   3. Regression       — charge/discharge regression + R2 across cycles
   4. Kinetic analysis — R and k vs voltage for charge / discharge
 
@@ -35,7 +35,7 @@ from ui_kinetics import KineticsSection
 # (key, display label) for each analysis section, in order.
 SECTIONS = [
     ("data",       "Data loading"),
-    ("pulse",      "Pulse check"),
+    ("pulse",      "Pulse verification"),
     ("regression", "Regression"),
     ("kinetics",   "Kinetic analysis"),
 ]
@@ -90,8 +90,8 @@ class PyICIApp(ctk.CTk):
         inner.pack(side="left", padx=12, pady=8)
         for i, (key, label) in enumerate(SECTIONS):
             btn = ctk.CTkButton(
-                inner, text=f"{i + 1}   {label}", height=42, width=200,
-                corner_radius=21, font=theme.font_sans(13),
+                inner, text=f"{i + 1}   {label}", height=44, width=210,
+                corner_radius=22, font=theme.font_sans(15, "bold"),   # #2 bigger + bold
                 fg_color=theme.BG, text_color=theme.MUTED,
                 hover_color=theme.ACCENT_TINT, border_width=0,
                 command=lambda k=key: self._show_section(k))

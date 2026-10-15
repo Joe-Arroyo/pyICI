@@ -69,7 +69,7 @@ def _first_available(preferred):
 
 
 # Global font-size multiplier. Raise/lower this one number to scale all text.
-FONT_SCALE = 1.1
+FONT_SCALE = 1.3
 
 # Default width (px) of a section's left controls column. One place so every
 # section stays in step; widened to give the controls more room.

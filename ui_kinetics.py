@@ -22,6 +22,7 @@ import customtkinter as ctk
 from gui import theme
 from gui.components.plot_panel import PlotPanel
 from gui.components.export_helper import export_figure
+from gui.components.scroll import AutoHideScrollableFrame
 import analysis.regression_analyzer as ra
 import analysis.kinetic_analyzer as ka
 
@@ -86,52 +87,59 @@ class KineticsSection(ctk.CTkFrame):
         card, outer = theme.card(self, "Kinetic analysis - controls", width=theme.CONTROL_W)
         card.pack(side="left", fill="y", padx=(0, theme.GAP))
         card.pack_propagate(False)
-        body = ctk.CTkScrollableFrame(outer, fg_color="transparent")
-        body.pack(fill="both", expand=True)
+        body = AutoHideScrollableFrame(outer, fg_color="transparent")    # auto-hide bar
+        body.pack(fill="both", expand=True, padx=(2, 12))                # breathing room
 
-        ctk.CTkLabel(body, text="File", font=theme.font_sans(12), text_color=theme.MUTED,
-                     anchor="w").pack(fill="x")
-        self.file_menu = ctk.CTkOptionMenu(
-            body, variable=self.file_var, values=["(no files)"], command=self._on_file_change,
-            fg_color=theme.SURFACE, text_color=theme.TEXT, button_color=theme.ACCENT,
-            button_hover_color=theme.ACCENT_HOVER, font=theme.font_sans(13),
-            dropdown_font=theme.font_sans(13))
+        def slabel(text, pady=(0, 2)):                                   # #1 bold/dark labels
+            ctk.CTkLabel(body, text=text, font=theme.font_sans(13, "bold"),
+                         text_color=theme.TEXT, anchor="w").pack(fill="x", pady=pady)
+
+        def teal_combo(variable, values, command):                      # #1 shared dropdown style
+            return ctk.CTkComboBox(
+                body, variable=variable, values=values, state="readonly", command=command,
+                fg_color=theme.ACCENT, text_color="#ffffff",
+                border_color=theme.ACCENT_HOVER, border_width=1,
+                button_color=theme.ACCENT_HOVER, button_hover_color=theme.ACCENT,
+                font=theme.font_sans(13), dropdown_font=theme.font_sans(13),
+                dropdown_fg_color=theme.SURFACE, dropdown_text_color=theme.TEXT,
+                dropdown_hover_color=theme.ACCENT_TINT)
+
+        # File selector (teal dropdown, same as Data loading / Pulse check)
+        slabel("File")
+        self.file_menu = teal_combo(self.file_var, ["(no files)"], self._on_file_change)
         self.file_menu.pack(fill="x", pady=(2, 0))
         ctk.CTkLabel(body, text="(files are loaded in Data loading)",
-                     font=theme.font_sans(11), text_color=theme.FAINT,
+                     font=theme.font_sans(12), text_color=theme.MUTED,   # #2 darker, readable
                      anchor="w").pack(fill="x", pady=(0, 2))
 
         # Phase toggle
-        ctk.CTkLabel(body, text="Phase", font=theme.font_sans(12), text_color=theme.MUTED,
-                     anchor="w").pack(fill="x", pady=(10, 2))
+        slabel("Phase", pady=(10, 2))
         self.phase_seg = ctk.CTkSegmentedButton(
             body, values=["Charge", "Discharge"], variable=self.phase_var,
-            command=self._on_phase, font=theme.font_sans(13),
+            command=self._on_phase, font=theme.font_sans(13, "bold"),
             selected_color=theme.ACCENT, selected_hover_color=theme.ACCENT_HOVER,
-            unselected_color=theme.BG, unselected_hover_color=theme.ACCENT_TINT,
-            text_color=theme.TEXT)
+            unselected_color=theme.MUTED, unselected_hover_color=theme.TEXT,
+            text_color="#ffffff")       # #1 white text, legible on both segments
         self.phase_seg.pack(fill="x")
 
         # Cycles
-        ctk.CTkLabel(body, text="Cycles  (blank = all, e.g. 1,3,5 or 1-5)",
-                     font=theme.font_sans(11), text_color=theme.FAINT,
-                     anchor="w").pack(fill="x", pady=(12, 2))
+        slabel("Cycles", pady=(12, 2))
+        ctk.CTkLabel(body, text="blank = all,  e.g. 1,3,5  or  1-5",
+                     font=theme.font_sans(12), text_color=theme.MUTED,   # #2 bigger + darker
+                     anchor="w").pack(fill="x", pady=(0, 2))
         self.cycle_entry = ctk.CTkEntry(body, textvariable=self.cycle_text_var,
                                         font=theme.font_sans(13), corner_radius=theme.RADIUS_INPUT)
         self.cycle_entry.pack(fill="x")
         self.cycle_entry.bind("<Return>", lambda e: self._compute_and_plot())
-        self.cycle_hint = ctk.CTkLabel(body, text="", font=theme.font_sans(11),
-                                       text_color=theme.FAINT, anchor="w")
+        self.cycle_hint = ctk.CTkLabel(body, text="", font=theme.font_sans(12),
+                                       text_color=theme.MUTED, anchor="w")   # #2
         self.cycle_hint.pack(fill="x")
 
         # X-axis
-        ctk.CTkLabel(body, text="X-axis", font=theme.font_sans(12), text_color=theme.MUTED,
-                     anchor="w").pack(fill="x", pady=(10, 2))
-        ctk.CTkOptionMenu(body, variable=self.xaxis_var, values=list(XAXES.keys()),
-                          command=lambda _c: self._plot(), fg_color=theme.SURFACE,
-                          text_color=theme.TEXT, button_color=theme.ACCENT,
-                          button_hover_color=theme.ACCENT_HOVER, font=theme.font_sans(13),
-                          dropdown_font=theme.font_sans(13)).pack(fill="x")
+        slabel("X-axis", pady=(10, 2))
+        self.xaxis_menu = teal_combo(self.xaxis_var, list(XAXES.keys()),
+                                     lambda _c: self._plot())
+        self.xaxis_menu.pack(fill="x")
 
         ctk.CTkCheckBox(body, text="Overlay all files (compare)", variable=self.overlay_var,
                         command=self._compute_and_plot, font=theme.font_sans(13),
