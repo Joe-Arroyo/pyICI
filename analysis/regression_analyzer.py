@@ -142,32 +142,51 @@ def resolve_window(rest_data, mode=DEFAULT_WINDOW_MODE, start=None, end=None):
 # =============================================================================
 
 def assign_valid_pulses(df, max_rest=MAX_REST_DURATION):
-    """Assign pulse numbers to valid pulses based on rest duration."""
+    """Assign pulse numbers to valid pulses based on rest duration.
+
+    A pulse is a run of active-current samples (``I != 0``) immediately followed
+    by a run of rest samples (``I == 0``); both runs share the pulse number,
+    provided the rest run's duration is ``<= max_rest``. Leading rest samples, a
+    trailing active run with no following rest, and active+rest blocks whose rest
+    is too long are left as 0 (unassigned). A rest run that reaches the end of the
+    data labels only its active part (preserving the original behaviour).
+
+    Vectorized over contiguous current runs: the previous element-by-element
+    ``df['...'].iloc[i]`` walk went through pandas scalar indexing once per row and
+    was by far the pipeline's dominant cost. Output is byte-for-byte unchanged.
+    """
     df = df.copy()
-    pulse_number = np.zeros(len(df), dtype=int)
-    pulse_counter = 0
-    i = 0
     n = len(df)
-    
-    while i < n:
-        if df['I/mA'].iloc[i] != 0:
-            start = i
-            while i < n and df['I/mA'].iloc[i] != 0:
-                i += 1
-            rest_start = i
-            while i < n and df['I/mA'].iloc[i] == 0:
-                i += 1
-            
-            if rest_start < n:
-                rest_duration = df['t/s'].iloc[i-1] - df['t/s'].iloc[rest_start] if i > rest_start else 0
-                if rest_duration <= max_rest:
-                    pulse_counter += 1
-                    pulse_number[start:rest_start] = pulse_counter
-                    if i < n:
-                        pulse_number[rest_start:i] = pulse_counter
-        else:
-            i += 1
-    
+    pulse_number = np.zeros(n, dtype=int)
+    if n == 0:
+        df['pulse_number'] = pulse_number
+        return df
+
+    cur = df['I/mA'].to_numpy()
+    t = df['t/s'].to_numpy()
+    active = cur != 0
+
+    # Maximal runs of constant active/rest state; adjacent runs always alternate.
+    # Run k spans [starts[k], ends[k]).
+    changes = np.flatnonzero(active[1:] != active[:-1]) + 1
+    starts = np.concatenate(([0], changes))
+    ends = np.concatenate((changes, [n]))
+
+    pulse_counter = 0
+    for k in range(len(starts)):
+        if not active[starts[k]]:
+            continue                                   # a rest run on its own
+        if k + 1 >= len(starts):
+            continue                                   # trailing active, no rest -> dropped
+        a_start, a_end = starts[k], ends[k]
+        r_start, r_end = starts[k + 1], ends[k + 1]    # the following rest run
+        if t[r_end - 1] - t[r_start] <= max_rest:
+            pulse_counter += 1
+            # A rest run reaching the end labels only its active part (matches the
+            # original's `if i < n` guard); otherwise active + rest together.
+            end_idx = a_end if r_end == n else r_end
+            pulse_number[a_start:end_idx] = pulse_counter
+
     df['pulse_number'] = pulse_number
     return df
 
