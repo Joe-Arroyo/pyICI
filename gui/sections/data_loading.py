@@ -363,7 +363,7 @@ class DataLoadingSection(ctk.CTkFrame):
     def _load_with_column_map(self, folder, name, path):
         """Pop the column-mapping dialog for an unrecognised layout and retry the
         load with the chosen mapping. Returns the DataLoadResult or None."""
-        from ui_column_map import ColumnMapDialog
+        from gui.sections.column_map import ColumnMapDialog
         columns = data_loader.peek_columns(path)
         if not columns:
             self._status(f"Could not read columns from {name}")
