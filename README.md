@@ -133,5 +133,39 @@ See the [Tutorial](Tutorial.md) for a quick guide through pyICI's features.
 
 ---
 
+## Use as a library
+
+Beyond the GUI, pyICI can be scripted — useful for batch-processing many files or
+feeding *R* / *k* into your own analysis. Import everything from the top-level
+`pyici` package (no GUI / tkinter needed):
+
+```python
+import pyici
+
+# 1. Load a data file  ->  df_raw, cycle_list, data_format, ...
+data = pyici.run_data_analysis("path/to/folder", "cell01.txt")   # or pyici.load_data(...)
+
+# 2. Inspect a cycle's current-interruption pulses
+pulses = pyici.analyze_cycle_pulses(data.df_raw, cycle_num=1)     # or pyici.segment_pulses(...)
+
+# 3. Compute R (Ω) and k (Ω·s^-1/2) for some cycles, charge phase,
+#    using the default 0.1-1.0 s fit window
+rk = pyici.compute_R_k_for_cycles(                                # or pyici.compute_rk(...)
+    data.df_raw, data.cycle_list, "charge",
+    "time", pyici.DEFAULT_TIME_START, pyici.DEFAULT_TIME_END, {}, mass_mg=0.0,
+)
+for cyc in rk:
+    print(cyc["cycle"], cyc["R"], cyc["k"])
+
+# 4. Or write the R/k results to CSV (charge and discharge in separate files)
+pyici.export_R_k_results(data.df_raw, data.cycle_list, output_folder="exports")
+```
+
+`pyici.load_data`, `pyici.segment_pulses` and `pyici.compute_rk` are friendly
+aliases for the three most common calls. `print(pyici.__version__)` reports the
+installed version.
+
+---
+
 ## AI Assistance
 This project was developed with the assistance of Claude (Anthropic). All code has been reviewed and tested by the authors.

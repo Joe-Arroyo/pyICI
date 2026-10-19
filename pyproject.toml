@@ -48,7 +48,7 @@ Repository = "https://github.com/Joe-Arroyo/pyICI"
 pyici = "main_gui:main"
 
 [tool.setuptools]
-packages = ["analysis", "gui", "gui.components", "gui.sections"]
+packages = ["pyici", "analysis", "gui", "gui.components", "gui.sections"]
 py-modules = ["main_gui"]
 
 [tool.coverage.run]
