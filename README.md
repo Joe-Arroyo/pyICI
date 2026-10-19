@@ -45,6 +45,26 @@ The GUI is organized into four sections:
 
 - Compatible with Python 3.9 - 3.13
 
+### Quick install (from PyPI)
+
+The easiest way to get pyICI. This installs pyICI and all of its dependencies and
+adds a `pyici` command that launches the GUI:
+
+```bash
+pip install pyici
+pyici
+```
+
+> On **Linux** you may first need the system `tkinter` package (see the note in
+> Step 1 below). Installing into a virtual environment is recommended (see Step 3).
+
+---
+
+### Install from source
+
+Use the steps below to run the latest (unreleased) code or to develop pyICI —
+they install from a clone of the repository.
+
 ### Step 1: **Install Python:**
 **Windows:**
 Download the installer from [python.org](https://www.python.org/downloads/) and run it. Make sure to check "Add Python to PATH" during installation.
