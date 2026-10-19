@@ -1,0 +1,33 @@
+name: Publish to PyPI
+
+# Builds pyICI and publishes it to PyPI whenever a GitHub Release is published.
+# Uses PyPI Trusted Publishing (OIDC) — no API tokens or passwords are stored.
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # required for trusted publishing (OIDC)
+      contents: read
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
