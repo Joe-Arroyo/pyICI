@@ -1,5 +1,7 @@
 # Tutorial
 
+> _**Before you start:** install pyICI — see the [README](README.md#installation) (`pip install ici-analysis`). This guide assumes pyICI is installed and running._
+
 pyICI opens with four sections, shown as tabs across the top and worked through
 left to right:
 

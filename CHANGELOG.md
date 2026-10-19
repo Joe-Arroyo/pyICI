@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tkinter is imported, so it works headless. See the "Use as a library" section of
   the README. (The computation lives unchanged in the `analysis` modules; this is a
   thin, documented front door, covered by a public-API contract test.)
+- **Published on PyPI** as `ici-analysis` — install with `pip install ici-analysis`
+  (then `import pyici`, or launch the `pyici` GUI). First PyPI release of pyICI.
 
 ## [2.0.0] - 2026-10-16
 
