@@ -21,7 +21,7 @@ Friendly aliases are provided for the three most common operations:
 from importlib.metadata import PackageNotFoundError, version as _version
 
 try:
-    __version__ = _version("pyici")
+    __version__ = _version("ici-analysis")
 except PackageNotFoundError:          # running from a source tree without install
     __version__ = "0.0.0+unknown"
 

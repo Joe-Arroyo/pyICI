@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyici"
+name = "ici-analysis"
 version = "2.1.0"
 description = "GUI tool for Intermittent Current Interruption (ICI) analysis of battery cycling data"
 readme = "README.md"

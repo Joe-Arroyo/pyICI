@@ -51,7 +51,7 @@ The easiest way to get pyICI. This installs pyICI and all of its dependencies an
 adds a `pyici` command that launches the GUI:
 
 ```bash
-pip install pyici
+pip install ici-analysis
 pyici
 ```
 
