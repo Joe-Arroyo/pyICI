@@ -43,111 +43,86 @@ The GUI is organized into four sections:
 
 ## Installation
 
-- Compatible with Python 3.9 - 3.13
+pyICI requires **Python 3.9–3.13**. There are two ways to install it:
 
-### Quick install (from PyPI)
+- **From PyPI** (recommended for most users) — one command, always the latest release.
+- **From source** — clone the repository, for development or the latest unreleased code.
 
-The easiest way to get pyICI. This installs pyICI and all of its dependencies and
-adds a `pyici` command that launches the GUI:
+Both use Python's `tkinter` GUI toolkit; on some Linux distributions you install it
+separately — see [A note on tkinter](#a-note-on-tkinter) below.
 
+### Install from PyPI (recommended)
+
+We recommend installing into a **virtual environment**, which keeps pyICI's
+dependencies isolated from your other Python projects. You create it once; after
+that you just reactivate it whenever you want to use pyICI.
+
+**Windows (PowerShell):**
+```powershell
+python -m venv ici-env            # create the environment (once)
+.\ici-env\Scripts\Activate.ps1   # activate it  ->  prompt shows (ici-env)
+pip install ici-analysis          # install pyICI and its dependencies
+pyici                             # launch the GUI
+```
+> If activation fails with *"running scripts is disabled"*, run
+> `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` once in that window,
+> then activate again.
+
+**macOS / Linux:**
 ```bash
-pip install ici-analysis
-pyici
+python3 -m venv ici-env           # create the environment (once)
+source ici-env/bin/activate       # activate it  ->  prompt shows (ici-env)
+pip install ici-analysis          # install pyICI and its dependencies
+pyici                             # launch the GUI
 ```
 
-> On **Linux** you may first need the system `tkinter` package (see the note in
-> Step 1 below). Installing into a virtual environment is recommended (see Step 3).
+To use pyICI again later, reopen a terminal, reactivate the same environment
+(`.\ici-env\Scripts\Activate.ps1` on Windows, `source ici-env/bin/activate` on
+macOS/Linux) and run `pyici`. Type `deactivate` to leave the environment; the
+installation stays until you delete the `ici-env` folder.
 
----
+> **If the `pyici` command isn't found** — this usually means pyICI was installed
+> *outside* a virtual environment (for example with the Microsoft Store Python) and
+> Python's scripts folder isn't on your `PATH`. Either install inside a virtual
+> environment as shown above, or launch it directly with:
+> ```bash
+> python -m main_gui
+> ```
+
+> **Note on the name:** the PyPI distribution is called **`ici-analysis`** (so you
+> `pip install ici-analysis`), but it still imports as `import pyici` and runs with
+> the `pyici` command.
 
 ### Install from source
 
-Use the steps below to run the latest (unreleased) code or to develop pyICI —
-they install from a clone of the repository.
+Use this for development, or to run the latest unreleased code.
 
-### Step 1: **Install Python:**
-**Windows:**
-Download the installer from [python.org](https://www.python.org/downloads/) and run it. Make sure to check "Add Python to PATH" during installation.
-
-**macOS:**
-Download the installer from [python.org](https://www.python.org/downloads/), or install via Homebrew:
 ```bash
-brew install python
-```
-
-**Linux:**
-Python is usually pre-installed. Verify with:
-```bash
-python3 --version
-```
-If not installed, use your package manager:
-```bash
-# Ubuntu/Debian
-sudo apt install python3 python3-pip
-```
-
-> **Note on tkinter**: pyICI uses `tkinter` for its GUI. Installation varies by platform:
-> - **Windows**: included with the standard Python installer, no action needed
-> - **macOS**: included with Python from python.org. If using Homebrew: `brew install python-tk`
-> - **Ubuntu/Debian**: `sudo apt install python3-tk`
-> - **Fedora**: `sudo dnf install python3-tkinter`
-> - **CentOS/RHEL**: `sudo yum install python3-tkinter`
-
----
-
- ### Step 2: **Download the project:**
- Open a terminal (Command prompt on Windows, Terminal on macOS/Linux) and run:
-```bash
-# Clone the repository
+# 1. clone the repository
 git clone https://github.com/Joe-Arroyo/pyICI.git
 cd pyICI
-```
-Or download the ZIP file and extract it.
 
----
-
-### Step 3: Create a virtual environment (recommended)
-
-Using a virtual environment keeps pyICI's dependencies isolated from other Python projects on your system.
-
-**Windows (Command Prompt):**
-```cmd
+# 2. (recommended) create and activate a virtual environment
 python -m venv venv
-venv\Scripts\activate
+# Windows (PowerShell):  .\venv\Scripts\Activate.ps1
+# macOS / Linux:         source venv/bin/activate
+
+# 3. install in editable mode, then run
+pip install -e .
+pyici                  # or:  python main_gui.py
 ```
 
-**macOS / Linux:**
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
+### A note on tkinter
 
-You should see `(venv)` in your terminal prompt. To deactivate later, run `deactivate`.
+pyICI's GUI is built on `tkinter`, which ships with Python on most systems. Some
+platforms package it separately:
+- **Windows**: included with the [python.org](https://www.python.org/downloads/) installer — no action needed.
+- **macOS**: included with python.org Python. With Homebrew: `brew install python-tk`.
+- **Ubuntu/Debian**: `sudo apt install python3-tk`
+- **Fedora**: `sudo dnf install python3-tkinter`
+- **CentOS/RHEL**: `sudo yum install python3-tkinter`
 
---- 
-
-### Step4:. **Install Python dependencies:**
-```bash
-pip install -e .     # installs pyICI; the `pyici` command then launches the GUI
-pyici                # GUI launches
-python main_gui.py   # also works
-```
-
-### Step 5: Run pyICI
-
-**Windows:**
-```bash
-python main_gui.py
-```
-
-**macOS / Linux:**
-```bash
-python3 main_gui.py
-```
-
----
-
-### Step 6: Get started
+### Get started
 
 See the [Tutorial](Tutorial.md) for a quick guide through pyICI's features.
 
