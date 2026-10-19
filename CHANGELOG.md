@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Public `pyici` API for scripting.** The analysis can now be used as a library:
+  `import pyici` exposes the stable entry points (loading, pulse segmentation,
+  per-pulse regression, R/k) under clean names, with friendly aliases
+  (`load_data`, `segment_pulses`, `compute_rk`) and `pyici.__version__`. No GUI /
+  tkinter is imported, so it works headless. See the "Use as a library" section of
+  the README. (The computation lives unchanged in the `analysis` modules; this is a
+  thin, documented front door, covered by a public-API contract test.)
+
 ## [2.0.0] - 2026-10-16
 
 ### Added
