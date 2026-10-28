@@ -1,8 +1,8 @@
-"""Characterization test for kinetic_analyzer's de-globalized R/k entry points."""
+"""Characterization test for rk_analyzer's de-globalized R/k entry points."""
 import numpy as np
 import pandas as pd
 
-from analysis.kinetic_analyzer import compute_R_k_for_cycle, compute_R_k_for_cycles
+from analysis.rk_analyzer import compute_R_k_for_cycle, compute_R_k_for_cycles
 
 
 def _synthetic_charge_cycle():

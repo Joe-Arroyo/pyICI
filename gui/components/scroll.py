@@ -3,7 +3,7 @@
 ``AutoHideScrollableFrame`` is a ``CTkScrollableFrame`` whose vertical scrollbar
 is shown ONLY when the content is taller than the visible area (a short window),
 and hidden otherwise (e.g. when the window is maximized and everything fits). The
-section control columns (Regression, Kinetic analysis) use it so they keep the
+section control columns (Regression, R & k analysis) use it so they keep the
 scroll safety net on small screens without an always-on scrollbar, and all behave
 identically.
 """

@@ -24,9 +24,10 @@ import customtkinter as ctk
 from gui import theme
 from gui.components.plot_panel import PlotPanel
 from gui.components.export_helper import export_figure
+from gui.components.scroll import AutoHideScrollableFrame
 import analysis.data_loader as data_loader
 import analysis.phase_classifier as phase_classifier
-import analysis.kinetic_analyzer as ka
+import analysis.rk_analyzer as ka
 
 # One colour per file for the overlay view (tab10-style palette).
 FILE_PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
@@ -80,7 +81,7 @@ class DataLoadingSection(ctk.CTkFrame):
         controls_card.pack(side="left", fill="y", padx=(0, theme.GAP))
         controls_card.pack_propagate(False)
         # #6 - a little inset so controls don't span the full card width.
-        body = ctk.CTkFrame(outer, fg_color="transparent")
+        body = AutoHideScrollableFrame(outer, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=(2, 12))
 
         # #7 - section labels: bigger, bold, dark (easily readable).

@@ -3,7 +3,7 @@
 * ``regression_analyzer.compute_V0_t0`` — V0/t0 = the last active (I != 0) sample
   of each pulse, broadcast to every row of that pulse (NaN if the pulse has no
   active sample).
-* ``kinetic_analyzer.get_pre_pulse_currents`` — the pre-interruption current
+* ``rk_analyzer.get_pre_pulse_currents`` — the pre-interruption current
   (amps) and voltage: the sample immediately before each pulse's first rest
   sample.
 """
@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from analysis.regression_analyzer import compute_V0_t0
-from analysis.kinetic_analyzer import get_pre_pulse_currents
+from analysis.rk_analyzer import get_pre_pulse_currents
 
 
 def _phase():

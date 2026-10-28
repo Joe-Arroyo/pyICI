@@ -56,7 +56,7 @@ def classify_charge_discharge(df, current_col='I/mA'):
 def calculate_capacity(data, mass_mg):
     """Calculate capacity from current integration with reset at each phase change.
 
-    Shared by the Classification tab (Capacity vs Voltage) and the Kinetics tab
+    Shared by the Classification tab (Capacity vs Voltage) and the R & k section
     (R/k vs Capacity) so both compute capacity the same way from the same function.
     """
     data = data.copy()

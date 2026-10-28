@@ -34,7 +34,7 @@ from gui.components.plot_panel import PlotPanel
 from gui.components.export_helper import export_figure
 from gui.components.scroll import AutoHideScrollableFrame
 import analysis.regression_analyzer as ra
-import analysis.kinetic_analyzer as ka
+import analysis.rk_analyzer as ka
 
 CHARGE = "charge"
 DISCHARGE = "discharge"
@@ -105,6 +105,18 @@ class RegressionSection(ctk.CTkFrame):
         self.dpi_var = tk.StringVar(value="300")
         self.fmt_var = tk.StringVar(value="png")
         self._settings_open = False
+        self._r2lim_open = False
+        self._autoopts_open = False
+
+        # Auto fit-window: a holding area for suggested per-pulse windows that
+        # survives navigation until you Save (or Restore defaults).
+        self.auto_windows = {}     # {(cyc,phase,pulse): (mode,start,end)} pending
+        self.auto_flags = {}       # {(cyc,phase,pulse): [flags]} from the last Auto run
+        self.fit_mode_var = tk.StringVar(value="Manual")
+        self.auto_skip_var = tk.StringVar(value=str(ra.AUTO_SKIP_INITIAL))
+        self.auto_minpts_var = tk.StringVar(value=str(ra.AUTO_MIN_POINTS))
+        self.auto_adjr2_var = tk.StringVar(value=str(ra.AUTO_ADJ_R2_MIN))
+        self.auto_edge_var = tk.StringVar(value=str(ra.AUTO_EDGE_POINTS))
 
         self._build()
 
@@ -217,10 +229,66 @@ class RegressionSection(ctk.CTkFrame):
         self.win_units.pack(fill="x")
         self._update_units_hint()
 
-        # Apply / Save rows (pulse, cycle, all cycles)
-        self._apply_save_row(body, "Apply → pulse", self._apply_pulse, self._save_pulse)
-        self._apply_save_row(body, "Apply → cycle", self._apply_cycle, self._save_cycle)
-        self._apply_save_row(body, "Apply → all cycles", self._apply_all, self._save_all)
+        # Fit readout for the current pulse (window / slope / intercept / R² /
+        # flags) - sits right under the window entry so the numbers update where
+        # you type them when you Apply or navigate.
+        self.info = ctk.CTkLabel(body, text="", font=theme.font_mono(12), text_color=theme.MUTED,
+                                 anchor="w", justify="left", wraplength=320)
+        self.info.pack(fill="x", pady=(8, 0))
+
+        # Manual <-> Auto fit-window mode switch (swaps the controls below)
+        slabel("Fit window", pady=(12, 2))
+        self.fit_mode_seg = ctk.CTkSegmentedButton(
+            body, values=["Manual", "Auto"], variable=self.fit_mode_var,
+            command=self._on_fit_mode, font=theme.font_sans(13, "bold"),
+            selected_color=theme.ACCENT, selected_hover_color=theme.ACCENT_HOVER,
+            unselected_color=theme.MUTED, unselected_hover_color=theme.TEXT,
+            text_color="#ffffff")
+        self.fit_mode_seg.pack(fill="x", pady=(0, 4))
+
+        self.mode_controls = ctk.CTkFrame(body, fg_color="transparent")
+        self.mode_controls.pack(fill="x")
+
+        # Manual and the COLLAPSED Auto view are pinned to the same height so
+        # switching Manual <-> Auto causes no vertical jump; the auto options
+        # expand BELOW this fixed block (pushing the lower controls down, as a
+        # dropdown should). 3 Apply/Save rows of height 30 + 2px pad each = 102.
+        mode_h = 102
+
+        # Manual: type a window, Apply (preview) / Save (persist) at each scope.
+        self.manual_frame = ctk.CTkFrame(self.mode_controls, fg_color="transparent", height=mode_h)
+        self._apply_save_row(self.manual_frame, "Apply → pulse", self._apply_pulse, self._save_pulse)
+        self._apply_save_row(self.manual_frame, "Apply → cycle", self._apply_cycle, self._save_cycle)
+        self._apply_save_row(self.manual_frame, "Apply → all cycles", self._apply_all, self._save_all)
+        self.manual_frame.pack_propagate(False)
+
+        # Auto: entering Auto mode immediately fits the optimal window for every
+        # pulse of every cycle. Save keeps them; the parameters live in a
+        # collapsible panel below so the collapsed view matches Manual's height.
+        self.auto_frame = ctk.CTkFrame(self.mode_controls, fg_color="transparent", height=mode_h)
+        ctk.CTkLabel(self.auto_frame,
+                     text="Auto-fits every pulse of every cycle. Review, then Save.",
+                     font=theme.font_sans(11), text_color=theme.MUTED,
+                     anchor="w", justify="left").pack(fill="x", pady=(0, 4))
+        ctk.CTkButton(self.auto_frame, text="Save auto fit", command=self._save_auto,
+                      height=30, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
+                      font=theme.font_sans(13, "bold"), corner_radius=theme.RADIUS_INPUT
+                      ).pack(fill="x", pady=(0, 2))
+        self.autoopts_toggle = ctk.CTkButton(
+            self.auto_frame, text="⚙  Auto fit options   +", anchor="w", height=30,
+            command=self._toggle_autoopts, fg_color=theme.BG, text_color=theme.MUTED,
+            hover_color=theme.ACCENT_TINT, font=theme.font_sans(12),
+            corner_radius=theme.RADIUS_INPUT)
+        self.autoopts_toggle.pack(fill="x", pady=(2, 0))
+        self.auto_frame.pack_propagate(False)
+
+        # Options panel is a sibling in mode_controls (below auto_frame), so it
+        # grows the layout only when expanded.
+        self.autoopts_frame = ctk.CTkFrame(self.mode_controls, fg_color=theme.BG,
+                                           corner_radius=theme.RADIUS_INPUT)
+        self._build_auto_settings(self.autoopts_frame)
+
+        self.manual_frame.pack(fill="x")   # Manual by default
 
         ctk.CTkButton(body, text="Restore defaults", command=self._restore_defaults, height=30,
                       fg_color=theme.SURFACE, text_color=theme.MUTED, border_color=theme.BORDER,
@@ -232,27 +300,15 @@ class RegressionSection(ctk.CTkFrame):
                       border_width=1, hover_color=theme.ACCENT_TINT, font=theme.font_sans(13),
                       corner_radius=theme.RADIUS_INPUT).pack(fill="x", pady=(10, 0))
 
-        # R² plot axis limits
-        ctk.CTkLabel(body, text="R² plot axis limits  (blank = auto)",
-                     font=theme.font_sans(12, "bold"), text_color=theme.TEXT,
-                     anchor="w").pack(fill="x", pady=(14, 2))
-        self._limit_row(body, "X", self.r2_xmin_var, self.r2_xmax_var)
-        self._limit_row(body, "R²", self.r2_ymin_var, self.r2_ymax_var)
-        r2lim_btns = ctk.CTkFrame(body, fg_color="transparent")
-        r2lim_btns.pack(fill="x", pady=(4, 0))
-        ctk.CTkButton(r2lim_btns, text="Apply", command=self._plot, height=30,
-                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      font=theme.font_sans(12, "bold"), corner_radius=theme.RADIUS_INPUT
-                      ).pack(side="left", fill="x", expand=True, padx=(0, 3))
-        ctk.CTkButton(r2lim_btns, text="Auto", command=self._r2_auto_limits, height=30,
-                      fg_color=theme.SURFACE, text_color=theme.ACCENT, border_color=theme.ACCENT,
-                      border_width=1, hover_color=theme.ACCENT_TINT, font=theme.font_sans(12),
-                      corner_radius=theme.RADIUS_INPUT).pack(side="left", fill="x", expand=True,
-                                                             padx=(3, 0))
-
-        self.info = ctk.CTkLabel(body, text="", font=theme.font_mono(12), text_color=theme.MUTED,
-                                 anchor="w", justify="left", wraplength=320)
-        self.info.pack(fill="x", pady=(10, 0))
+        # R² plot axis limits (collapsible, like Export settings - rarely needed)
+        self.r2lim_toggle = ctk.CTkButton(
+            body, text="⚙  R² axis limits   +", anchor="w", height=30,
+            command=self._toggle_r2lim, fg_color=theme.BG, text_color=theme.MUTED,
+            hover_color=theme.ACCENT_TINT, font=theme.font_sans(12),
+            corner_radius=theme.RADIUS_INPUT)
+        self.r2lim_toggle.pack(fill="x", pady=(14, 0))
+        self.r2lim_frame = ctk.CTkFrame(body, fg_color=theme.BG, corner_radius=theme.RADIUS_INPUT)
+        self._build_r2lim(self.r2lim_frame)
 
         # Collapsible export panel
         self.adv_toggle = ctk.CTkButton(
@@ -368,6 +424,35 @@ class RegressionSection(ctk.CTkFrame):
             self.settings_frame.pack_forget()
             self.adv_toggle.configure(text="⚙  Export settings   +")
 
+    def _build_r2lim(self, parent):
+        pad = 8
+        ctk.CTkLabel(parent, text="R² plot axis limits  (blank = auto)",
+                     font=theme.font_sans(12, "bold"), text_color=theme.TEXT,
+                     anchor="w").pack(fill="x", padx=pad, pady=(pad, 2))
+        self._limit_row(parent, "X", self.r2_xmin_var, self.r2_xmax_var)
+        self._limit_row(parent, "R²", self.r2_ymin_var, self.r2_ymax_var)
+        btns = ctk.CTkFrame(parent, fg_color="transparent")
+        btns.pack(fill="x", padx=pad, pady=(4, pad))
+        ctk.CTkButton(btns, text="Apply", command=self._plot, height=30,
+                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
+                      font=theme.font_sans(12, "bold"), corner_radius=theme.RADIUS_INPUT
+                      ).pack(side="left", fill="x", expand=True, padx=(0, 3))
+        ctk.CTkButton(btns, text="Auto", command=self._r2_auto_limits, height=30,
+                      fg_color=theme.SURFACE, text_color=theme.ACCENT, border_color=theme.ACCENT,
+                      border_width=1, hover_color=theme.ACCENT_TINT, font=theme.font_sans(12),
+                      corner_radius=theme.RADIUS_INPUT).pack(side="left", fill="x", expand=True,
+                                                             padx=(3, 0))
+
+    def _toggle_r2lim(self):
+        self._r2lim_open = not self._r2lim_open
+        if self._r2lim_open:
+            # anchor just under its own toggle (Export settings is packed after it)
+            self.r2lim_frame.pack(fill="x", pady=(6, 0), before=self.adv_toggle)
+            self.r2lim_toggle.configure(text="⚙  R² axis limits   –")
+        else:
+            self.r2lim_frame.pack_forget()
+            self.r2lim_toggle.configure(text="⚙  R² axis limits   +")
+
     # ---- shared-data access ----------------------------------------------
     def _status(self, msg):
         try:
@@ -395,9 +480,11 @@ class RegressionSection(ctk.CTkFrame):
         self.sel_file = name
         self.saved = self.saved_by_file.setdefault(name, {})
         self.preview.clear()
+        self.auto_windows = {}
+        self.auto_flags = {}
 
     def saved_windows_for(self, fname):
-        """The saved (not preview) windows for a file - used by the Kinetics bridge."""
+        """The saved (not preview) windows for a file - used by the R & k bridge."""
         self._sync_saved()
         return dict(self.saved_by_file.get(fname, {}))
 
@@ -458,18 +545,15 @@ class RegressionSection(ctk.CTkFrame):
         self.pulse_entry_var.set(str(self.pulse_list[self.pulse_idx]) if self.pulse_list else "")
 
     def _sync_window_entries(self):
-        """Reflect the current pulse's effective SAVED window in the entry fields,
-        or reset to the default parameters when the pulse has no saved window.
-        (Previews are cleared on navigation, so only saved windows carry over.)"""
+        """Reflect the window actually IN EFFECT for the current pulse in the entry
+        fields - saved, auto-suggested, previewed, or the default - so the start/end
+        boxes always show the real numbers, not only the plot."""
         if not self.pulse_list:
             return
-        spec, src = self._win_lookup(self._current_cycle(), self.phase,
-                                     self.pulse_list[self.pulse_idx])
-        if src.endswith("saved"):
-            mode, s, e = spec
-            self.mode_var.set(mode)
-        else:
-            s, e = _mode_defaults(self.mode_var.get())
+        spec, _src = self._win_lookup(self._current_cycle(), self.phase,
+                                      self.pulse_list[self.pulse_idx])
+        mode, s, e = spec
+        self.mode_var.set(mode)
         self.start_var.set(f"{s:g}")
         self.end_var.set(f"{e:g}")
         self._update_units_hint()
@@ -566,7 +650,18 @@ class RegressionSection(ctk.CTkFrame):
         self._plot()
 
     def _on_mode(self, _value=None):
-        s, e = _mode_defaults(self.mode_var.get())
+        """Switching mode shows the current pulse's window for THIS mode if it has
+        a saved/resolved one in this mode, otherwise the mode's defaults - so a
+        non-default saved window stays visible when you toggle index <-> time."""
+        mode = self.mode_var.get()
+        s = e = None
+        if self.pulse_list:
+            spec, _src = self._win_lookup(self._current_cycle(), self.phase,
+                                          self.pulse_list[self.pulse_idx])
+            if spec[0] == mode:
+                _m, s, e = spec
+        if s is None:
+            s, e = _mode_defaults(mode)
         self.start_var.set(f"{s:g}")
         self.end_var.set(f"{e:g}")
         self._update_units_hint()
@@ -627,10 +722,161 @@ class RegressionSection(ctk.CTkFrame):
         self._plot()
         self._status(msg)
 
+    # ---- auto fit-window estimation --------------------------------------
+    def _on_fit_mode(self, _value=None):
+        self.manual_frame.pack_forget()
+        self.auto_frame.pack_forget()
+        self.autoopts_frame.pack_forget()
+        if self.fit_mode_var.get() == "Auto":
+            self.auto_frame.pack(fill="x")
+            if self._autoopts_open:                 # keep options open across toggles
+                self.autoopts_frame.pack(fill="x", pady=(4, 0))
+            self._auto_all_pulses()        # Auto is one step: run as soon as it's picked
+        else:
+            self.manual_frame.pack(fill="x")
+
+    def _toggle_autoopts(self):
+        self._autoopts_open = not self._autoopts_open
+        if self._autoopts_open:
+            self.autoopts_frame.pack(fill="x", pady=(4, 0))   # appends below auto_frame
+            self.autoopts_toggle.configure(text="⚙  Auto fit options   –")
+        else:
+            self.autoopts_frame.pack_forget()
+            self.autoopts_toggle.configure(text="⚙  Auto fit options   +")
+
+    def _build_auto_settings(self, parent):
+        pad = 8
+        ctk.CTkLabel(parent, text="Auto fit settings", font=theme.font_sans(12, "bold"),
+                     text_color=theme.TEXT, anchor="w").pack(fill="x", padx=pad, pady=(pad, 2))
+
+        def _row(label, var, hint):
+            r = ctk.CTkFrame(parent, fg_color="transparent")
+            r.pack(fill="x", padx=pad, pady=1)
+            ctk.CTkLabel(r, text=label, font=theme.font_sans(12), text_color=theme.MUTED,
+                         width=96, anchor="w").pack(side="left")
+            ctk.CTkEntry(r, textvariable=var, width=64, font=theme.font_mono(12),
+                         corner_radius=theme.RADIUS_INPUT).pack(side="left")
+            ctk.CTkLabel(r, text=hint, font=theme.font_sans(11), text_color=theme.MUTED,
+                         anchor="w").pack(side="left", padx=(6, 0))
+
+        _row("skip first", self.auto_skip_var, "IR-drop pts")
+        _row("min points", self.auto_minpts_var, "")
+        _row("min adj R²", self.auto_adjr2_var, "linearity")
+        _row("edge points", self.auto_edge_var, "curvature")
+        ctk.CTkButton(parent, text="Re-run auto fit", command=self._auto_all_pulses, height=30,
+                      fg_color=theme.SURFACE, text_color=theme.ACCENT, border_color=theme.ACCENT,
+                      border_width=1, hover_color=theme.ACCENT_TINT, font=theme.font_sans(12),
+                      corner_radius=theme.RADIUS_INPUT).pack(fill="x", padx=pad, pady=(6, pad))
+
+    def _auto_kwargs(self):
+        def _num(var, default, cast):
+            try:
+                return cast(var.get())
+            except (ValueError, tk.TclError):
+                return default
+        return dict(
+            skip_initial=_num(self.auto_skip_var, ra.AUTO_SKIP_INITIAL, int),
+            min_points=_num(self.auto_minpts_var, ra.AUTO_MIN_POINTS, int),
+            adj_r2_min=_num(self.auto_adjr2_var, ra.AUTO_ADJ_R2_MIN, float),
+            edge_points=_num(self.auto_edge_var, ra.AUTO_EDGE_POINTS, int),
+        )
+
+    def _pulse_current_ma(self, data, pulse):
+        active = data[(data['pulse_number'] == pulse) & (data['I/mA'] != 0)]['I/mA']
+        return float(np.median(active.values)) if len(active) else float('nan')
+
+    def _physical_flags(self, out, data, pulse):
+        """Current-dependent QC flags the pure estimator can't know on its own."""
+        flags = list(out['flags'])
+        i_ma = self._pulse_current_ma(data, pulse)
+        if not np.isfinite(i_ma) or abs(i_ma) < 0.5:
+            flags.append('degenerate_dI')
+        else:
+            i_a = i_ma / 1000.0
+            if (-out['intercept'] / i_a) < 0 or (-out['slope'] / i_a) < 0:
+                flags.append('non_physical')
+        return flags
+
+    def _flagged_summary(self, flags_map, limit=6):
+        """Short 'cyc0 chg p1, ...' list of flagged pulses for the status line."""
+        if not flags_map:
+            return ""
+        abbr = {CHARGE: "chg", DISCHARGE: "dis"}
+        items = [f"cyc{c} {abbr[ph]} p{p}" for (c, ph, p) in sorted(flags_map)]
+        shown = ", ".join(items[:limit])
+        if len(items) > limit:
+            shown += f", +{len(items) - limit} more"
+        return ": " + shown
+
+    def _auto_all_pulses(self):
+        """Fit the optimal window for every pulse of every cycle (both phases) at
+        once. Results show as a pending suggestion; Save commits them."""
+        if self.df_raw is None or not self.cycle_list:
+            self._status("Load a file first")
+            return
+        kw = self._auto_kwargs()
+        mode = self._mode()
+        pending, flags_map, n_set = {}, {}, 0
+        cycles_done = set()
+        for cyc in self.cycle_list:
+            reg = ra.load_cycle_for_regression(self.df_raw, cyc)
+            if reg is None:
+                continue
+            for phase, data, pulses in ((CHARGE, reg.charge_data, reg.charge_pulses),
+                                        (DISCHARGE, reg.discharge_data, reg.discharge_pulses)):
+                if not pulses or not len(data):
+                    continue
+                for p in pulses:
+                    rest = ra.pulse_rest_data(data, p)
+                    if rest is None:
+                        continue
+                    out = ra.estimate_optimal_window(rest, **kw)
+                    if out is None:
+                        continue
+                    if mode == MODE_TIME:
+                        pending[(cyc, phase, p)] = (MODE_TIME, out['time_start'], out['time_end'])
+                    else:
+                        pending[(cyc, phase, p)] = (MODE_INDEX, out['index_start'], out['index_end'])
+                    n_set += 1
+                    cycles_done.add(cyc)
+                    fl = self._physical_flags(out, data, p)
+                    if fl:
+                        flags_map[(cyc, phase, p)] = fl
+        if not pending:
+            self._status("Auto: no pulses could be fit")
+            return
+        self.auto_windows = pending
+        self.auto_flags = flags_map
+        self.preview.clear()
+        self._overall = None
+        self._sync_window_entries()
+        self._update_labels()
+        self._plot()
+        self._status(f"Auto: fit {n_set} pulse(s) in {len(cycles_done)} cycle(s), both "
+                     f"phases — {len(flags_map)} flagged"
+                     f"{self._flagged_summary(flags_map)}. Review, then Save.")
+
+    def _save_auto(self):
+        if not self.auto_windows:
+            self._status("Nothing to save — click Auto first")
+            return
+        n = len(self.auto_windows)
+        self.saved.update(self.auto_windows)
+        self.auto_windows = {}
+        self.auto_flags = {}
+        self._sync_saved()
+        self._overall = None
+        self._sync_window_entries()
+        self._update_labels()
+        self._plot()
+        self._status(f"Saved {n} auto windows.")
+
     def _restore_defaults(self):
         """Clear every applied/saved window so all pulses revert to the default."""
         self.saved.clear()
         self.preview.clear()
+        self.auto_windows = {}
+        self.auto_flags = {}
         self._overall = None
         s, e = _mode_defaults(self._mode())
         self.start_var.set(f"{s:g}")
@@ -675,6 +921,8 @@ class RegressionSection(ctk.CTkFrame):
                            ((phase,), "all")):
             if key in self.preview:
                 return self.preview[key], f"{scope}·preview"
+            if key in self.auto_windows:
+                return self.auto_windows[key], f"{scope}·auto"
             if key in self.saved:
                 return self.saved[key], f"{scope}·saved"
         return self._default_spec(), "default"
@@ -743,6 +991,9 @@ class RegressionSection(ctk.CTkFrame):
             spec, src = self._win_lookup(self._current_cycle(), self.phase,
                                          self.pulse_list[self.pulse_idx])
             lines.append(f"window: {self._fmt_window(spec)}  [{src}]")
+            key = (self._current_cycle(), self.phase, self.pulse_list[self.pulse_idx])
+            if key in self.auto_flags:
+                lines.append("⚠ flagged: " + ", ".join(self.auto_flags[key]))
         fit = self._current_fit()
         if fit is not None and not np.isnan(fit["r2"]):
             lines.append(f"slope = {fit['slope']:.5g}")

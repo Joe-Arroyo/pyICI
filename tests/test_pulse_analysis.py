@@ -56,7 +56,7 @@ def test_max_rest_duration_single_source():
     import analysis.data_loader as dl
     import analysis.regression_analyzer as ra
     import analysis.pulse_analyzer as pa
-    import analysis.kinetic_analyzer as ka
+    import analysis.rk_analyzer as ka
 
     assert pc.MAX_REST_DURATION == 1800
     for mod in (dl, ra, pa, ka):

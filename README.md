@@ -35,7 +35,7 @@ The GUI is organized into four sections:
   - The regression fit and an R<sup>2</sup>-across-pulses plot shown together, with axis-limit controls; an "Overall check" of R<sup>2</sup> across every cycle
   - *R* and *k* shown on the fit plot, and a secondary time axis on the ΔV-vs-√time plot
 
-- **Kinetic analysis**: *R* and *k* calculation from the regression parameters.
+- **R & k analysis**: *R* and *k* calculation from the regression parameters.
   - $R = - \frac{intercept}{I}$ and $k = - \frac{slope}{I}$, with *I* the current before the interruption
   - *R* and *k* vs voltage, capacity, or specific capacity — coloured by cycle, with axis-limit controls and multi-file overlay
   - Covariance-based error bars

@@ -10,7 +10,7 @@ Sections:
   1. Data loading       — load data, see cycles, capacity / specific-capacity plots
   2. Pulse verification — cycle overview + pulse detail + rest-period zoom
   3. Regression         — charge/discharge ΔV-vs-√t regression + R² across cycles
-  4. Kinetic analysis   — R and k vs voltage / capacity for charge / discharge
+  4. R & k analysis     — R and k vs voltage / capacity for charge / discharge
 
 Run with:
     python main_gui.py
@@ -29,17 +29,17 @@ from gui import theme
 from gui.sections.data_loading import DataLoadingSection
 from gui.sections.pulse import PulseCheckSection
 from gui.sections.regression import RegressionSection
-from gui.sections.kinetics import KineticsSection
+from gui.sections.rk import RkSection
 
 # (key, display label) for each analysis section, in order.
 SECTIONS = [
     ("data",       "Data loading"),
     ("pulse",      "Pulse verification"),
     ("regression", "Regression"),
-    ("kinetics",   "Kinetic analysis"),
+    ("rk",         "R & k analysis"),
 ]
 
-APP_VERSION = "2.0.0-dev"
+APP_VERSION = "2.2.0"
 
 
 class PyICIApp(ctk.CTk):
@@ -113,8 +113,8 @@ class PyICIApp(ctk.CTk):
             return PulseCheckSection(self.content, self)
         if key == "regression":
             return RegressionSection(self.content, self)
-        if key == "kinetics":
-            return KineticsSection(self.content, self)
+        if key == "rk":
+            return RkSection(self.content, self)
 
         frame = ctk.CTkFrame(self.content, fg_color="transparent")
         controls_card, controls_body = theme.card(frame, f"{label} - controls", width=320)

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Kinetic analysis section for the new pyICI GUI.
+"""R & k analysis section for the new pyICI GUI.
 
 Adapted from the original Tab 5 (Resistance Analysis). For the selected cycles and
 phase it plots internal resistance R and diffusion resistance k against voltage
 (or capacity / specific capacity), with 1σ error bars, coloured by cycle.
 
-Reuses the analysis layer unchanged: analysis.kinetic_analyzer.compute_R_k_for_cycles
+Reuses the analysis layer unchanged: analysis.rk_analyzer.compute_R_k_for_cycles
 runs the full ICI pipeline. The per-pulse regression windows you Saved in the
 Regression section are bridged in here as `saved_params` (pulse > cycle > all-cycles
 precedence), so hand-tuned fits drive R and k; untuned pulses use the default window.
@@ -24,7 +24,7 @@ from gui.components.plot_panel import PlotPanel
 from gui.components.export_helper import export_figure
 from gui.components.scroll import AutoHideScrollableFrame
 import analysis.regression_analyzer as ra
-import analysis.kinetic_analyzer as ka
+import analysis.rk_analyzer as ka
 
 CHARGE = "charge"
 DISCHARGE = "discharge"
@@ -45,7 +45,7 @@ XAXES = {
 }
 
 
-class KineticsSection(ctk.CTkFrame):
+class RkSection(ctk.CTkFrame):
     """Left controls + right R/k plots."""
 
     def __init__(self, parent, app):
@@ -58,9 +58,11 @@ class KineticsSection(ctk.CTkFrame):
         self.phase = CHARGE
         self.sel_file = None          # the file this tab analyzes (independent per tab)
         self._results = None          # list of per-cycle R/k dicts
+        self._results_other = None    # the other phase, when "Include ..." is checked
 
         self.file_var = tk.StringVar(value="")
         self.phase_var = tk.StringVar(value="Charge")
+        self.include_other_var = tk.BooleanVar(value=False)
         self.cycle_text_var = tk.StringVar(value="")
         self.xaxis_var = tk.StringVar(value="Voltage (V)")
         self.overlay_var = tk.BooleanVar(value=False)
@@ -84,7 +86,7 @@ class KineticsSection(ctk.CTkFrame):
 
     # ---- layout -----------------------------------------------------------
     def _build(self):
-        card, outer = theme.card(self, "Kinetic analysis - controls", width=theme.CONTROL_W)
+        card, outer = theme.card(self, "R & k analysis - controls", width=theme.CONTROL_W)
         card.pack(side="left", fill="y", padx=(0, theme.GAP))
         card.pack_propagate(False)
         body = AutoHideScrollableFrame(outer, fg_color="transparent")    # auto-hide bar
@@ -121,6 +123,12 @@ class KineticsSection(ctk.CTkFrame):
             unselected_color=theme.MUTED, unselected_hover_color=theme.TEXT,
             text_color="#ffffff")       # #1 white text, legible on both segments
         self.phase_seg.pack(fill="x")
+        self.include_chk = ctk.CTkCheckBox(
+            body, text="Include discharge", variable=self.include_other_var,
+            command=self._compute_and_plot, font=theme.font_sans(12),
+            checkbox_width=18, checkbox_height=18,
+            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER)
+        self.include_chk.pack(fill="x", pady=(4, 0))
 
         # Cycles
         slabel("Cycles", pady=(12, 2))
@@ -193,7 +201,7 @@ class KineticsSection(ctk.CTkFrame):
         self._update_csv_button()
 
         # Plots
-        plot_card, plot_body = theme.card(self, "Kinetic analysis - plots")
+        plot_card, plot_body = theme.card(self, "R & k analysis - plots")
         plot_card.pack(side="left", fill="both", expand=True)
         self.panel = PlotPanel(plot_body, figsize=(8, 9))
         self.panel.pack(fill="both", expand=True)
@@ -309,6 +317,8 @@ class KineticsSection(ctk.CTkFrame):
     def _on_phase(self, _value=None):
         self.phase = CHARGE if self.phase_var.get() == "Charge" else DISCHARGE
         self._update_csv_button()
+        self.include_chk.configure(
+            text="Include charge" if self.phase == DISCHARGE else "Include discharge")
         self._compute_and_plot()
 
     def _update_csv_button(self):
@@ -384,6 +394,7 @@ class KineticsSection(ctk.CTkFrame):
             for fname, rec in files.items():
                 self._overlay[fname] = self._rk_for_file(fname, rec, self.phase)
             self._results = None
+            self._results_other = None
             npts = sum(sum(len(r["pulse_nums"]) for r in res)
                        for res in self._overlay.values())
             self.info.configure(text=f"Overlay: {len(files)} files, {npts} pulses")
@@ -405,6 +416,13 @@ class KineticsSection(ctk.CTkFrame):
         self._results = ka.compute_R_k_for_cycles(
             self.df_raw, cycles, self.phase, default[0], default[1], default[2],
             saved_params, self.mass)
+        if self.include_other_var.get():
+            other = DISCHARGE if self.phase == CHARGE else CHARGE
+            d2, sp2 = self._regression_windows(self.df_raw, cycles, other, self.sel_file)
+            self._results_other = ka.compute_R_k_for_cycles(
+                self.df_raw, cycles, other, d2[0], d2[1], d2[2], sp2, self.mass)
+        else:
+            self._results_other = None
         n_pulses = sum(len(r["pulse_nums"]) for r in self._results) if self._results else 0
         n_tuned = len(saved_params)
         self.info.configure(
@@ -428,14 +446,32 @@ class KineticsSection(ctk.CTkFrame):
         full = self.cycle_list or []
         return (min(full), max(full)) if full else (0, 0)
 
-    def _cycle_colors(self, cycles):
-        """Old-GUI scheme: blue for charge / red for discharge, getting darker as
-        the cycle number increases (intensity 0.4 -> 1.0 across the full range)."""
-        cmap = self._phase_cmap()
+    def _colors_for(self, cycles, phase):
+        """Blue (charge) / red (discharge), darkening with cycle number."""
+        cmap = plt.colormaps["Blues" if phase == CHARGE else "Reds"]
         lo, hi = self._cycle_span()
         span = (hi - lo) or 1
-        colors = {c: cmap(0.4 + 0.6 * (c - lo) / span) for c in cycles}
-        return colors, len(cycles) > 10
+        return {c: cmap(0.4 + 0.6 * (c - lo) / span) for c in cycles}
+
+    def _cycle_colors(self, cycles):
+        return self._colors_for(cycles, self.phase), len(cycles) > 10
+
+    def _draw_rk(self, ax_R, ax_k, results, phase, x_key, label_mode):
+        """Draw one phase's R and k (label_mode: 'none' | 'cycle' | 'phase')."""
+        colors = self._colors_for([r["cycle"] for r in results], phase)
+        for r in results:
+            cyc = r["cycle"]
+            x = np.asarray(r[x_key], dtype=float)
+            if label_mode == "cycle":
+                label = f"Cycle {cyc}"
+            elif label_mode == "phase":
+                label = f"{phase} cyc {cyc}"
+            else:
+                label = None
+            ax_R.errorbar(x, r["R"], yerr=r["R_err"], fmt="o-", color=colors[cyc], markersize=4,
+                          linewidth=1.2, capsize=2, alpha=0.85, label=label)
+            ax_k.errorbar(x, r["k"], yerr=r["k_err"], fmt="o-", color=colors[cyc], markersize=4,
+                          linewidth=1.2, capsize=2, alpha=0.85)
 
     def _apply_limits(self, ax_R, ax_k):
         def _val(var):
@@ -474,28 +510,28 @@ class KineticsSection(ctk.CTkFrame):
         ax_R = fig.add_subplot(211)
         ax_k = fig.add_subplot(212, sharex=ax_R)
         x_key, x_label = XAXES[self.xaxis_var.get()]
+        both = self._results_other is not None
         cycles = [r["cycle"] for r in self._results]
-        colors, use_cbar = self._cycle_colors(cycles)
+        use_cbar = (not both) and len(cycles) > 10
 
-        for r in self._results:
-            cyc = r["cycle"]
-            x = np.asarray(r[x_key], dtype=float)
-            color = colors[cyc]
-            label = None if use_cbar else f"Cycle {cyc}"
-            ax_R.errorbar(x, r["R"], yerr=r["R_err"], fmt="o-", color=color, markersize=4,
-                          linewidth=1.2, capsize=2, alpha=0.85, label=label)
-            ax_k.errorbar(x, r["k"], yerr=r["k_err"], fmt="o-", color=color, markersize=4,
-                          linewidth=1.2, capsize=2, alpha=0.85)
+        if both:
+            other = DISCHARGE if self.phase == CHARGE else CHARGE
+            self._draw_rk(ax_R, ax_k, self._results, self.phase, x_key, "phase")
+            self._draw_rk(ax_R, ax_k, self._results_other, other, x_key, "phase")
+        else:
+            self._draw_rk(ax_R, ax_k, self._results, self.phase, x_key,
+                          "none" if use_cbar else "cycle")
 
+        title = "charge & discharge" if both else self.phase
         ax_R.set_ylabel("R (Ω)", fontsize=12)
         ax_R.set_xlabel(x_label, fontsize=12)
         ax_R.tick_params(labelbottom=True)     # keep x tick labels on the top plot too
-        ax_R.set_title(f"{self.phase.capitalize()} — internal resistance R",
+        ax_R.set_title(f"{title.capitalize()} — internal resistance R",
                        fontsize=11, fontweight="bold")
         ax_R.grid(True, alpha=0.3)
         ax_k.set_ylabel("k (Ω·s$^{-1/2}$)", fontsize=12)
         ax_k.set_xlabel(x_label, fontsize=12)
-        ax_k.set_title(f"{self.phase.capitalize()} — diffusion resistance k",
+        ax_k.set_title(f"{title.capitalize()} — diffusion resistance k",
                        fontsize=11, fontweight="bold")
         ax_k.grid(True, alpha=0.3)
 
@@ -510,9 +546,11 @@ class KineticsSection(ctk.CTkFrame):
             cbar = fig.colorbar(sm, ax=[ax_R, ax_k], pad=0.02, fraction=0.046)
             cbar.set_label("Cycle number", rotation=270, labelpad=15)
         else:
-            leg = ax_R.legend(loc="best", fontsize=8)
-            if leg is not None:
-                leg.set_draggable(True)
+            _h, _labels = ax_R.get_legend_handles_labels()
+            if _labels:
+                leg = ax_R.legend(loc="best", fontsize=8, ncol=2 if both else 1)
+                if leg is not None:
+                    leg.set_draggable(True)
         self.panel.refresh()
 
     def _plot_overlay(self, fig):
@@ -568,7 +606,7 @@ class KineticsSection(ctk.CTkFrame):
         fmt = self.fmt_var.get()
         what = self.export_what_var.get()           # "Both" | "R only" | "k only"
         suffix = {"Both": "Rk", "R only": "R", "k only": "k"}[what]
-        stem = "pyICI_overlay" if self._overlay else os.path.splitext(self.sel_file or "pyICI_kinetics")[0]
+        stem = "pyICI_overlay" if self._overlay else os.path.splitext(self.sel_file or "pyICI_rk")[0]
         path = filedialog.asksaveasfilename(
             title="Export R & k figure", defaultextension=f".{fmt}",
             initialfile=f"{stem}_{self.phase}_{suffix}.{fmt}",

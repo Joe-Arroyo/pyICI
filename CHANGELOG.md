@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-28
+
+### Added
+- **Automatic fit-window detection in the Regression section.** Switching the
+  fit mode to **Auto** fits, in one step, the optimal ΔV-vs-√t regression window
+  for every pulse of every cycle (both phases). For each pulse it scans candidate
+  windows and keeps the one with the smallest relative error on *R* and *k* that
+  still passes two physical gates — statistical linearity (adjusted R²) and an
+  edge-curvature check that rejects windows reaching past the √t-linear region —
+  and flags any pulse it cannot fit cleanly (`low_confidence`, `edge_curvature`,
+  `poor_fit`, `too_few_points`, non-physical *R*/*k*). Results appear as a
+  reviewable suggestion; **Save** commits them per file, and flagged pulses are
+  listed in the status bar and marked on each pulse. The thresholds (skip-first,
+  min points, min adjusted R², edge points) are adjustable in a collapsible
+  "Auto fit options" panel. The window scan is vectorised and numerically
+  identical to the canonical single-pulse fit, so it changes no results (the full
+  auto-fit over the 10-cycle example runs in well under a second).
+- **R & k analysis — include the other phase.** A checkbox overlays the opposite
+  phase (charge with discharge, or vice versa) on the R and k plots for direct
+  comparison; its label follows the selected phase.
+
+### Changed
+- Renamed the **Kinetic analysis** section to **R & k analysis** throughout the
+  application — the section label, its plot titles, and the analysis module
+  (`analysis.rk_analyzer`, formerly `analysis.kinetic_analyzer`). The ICI outputs
+  are an internal resistance *R* and a diffusion resistance coefficient *k* (a
+  resistance and a mass-transport term), so "kinetics" — which denotes
+  reaction-rate behaviour — did not accurately describe them. No change to any
+  computed values or exported columns, and the public `pyici` API is unchanged
+  (`import pyici` still exposes `compute_rk` and the other entry points).
+- **Regression controls reworked.** The Start/End boxes now always show the
+  window actually in effect for the current pulse (saved, auto-suggested, or
+  default), not only the last-saved one; the fit readout (window / slope /
+  intercept / R² / flags) sits directly under the window entry so it updates
+  where you type; the R²-plot axis-limit controls moved into a collapsible panel;
+  and the Manual and (collapsed) Auto controls share the same height so switching
+  between them doesn't shift the layout.
+- Controls columns now show a scrollbar only when their content doesn't fit,
+  consistently across all four sections.
+
+### Fixed
+- A saved or auto-suggested regression window is no longer lost when switching
+  the window units between index and time, and auto-fit now works in time mode
+  as well as index.
+
 ## [2.1.0] - 2026-10-19
 
 ### Added

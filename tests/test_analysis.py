@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from analysis.regression_analyzer import compute_single_pulse_regression, r2_score
-from analysis.kinetic_analyzer import compute_R_k
+from analysis.rk_analyzer import compute_R_k
 
 
 def test_perfect_line_recovers_slope_and_intercept():

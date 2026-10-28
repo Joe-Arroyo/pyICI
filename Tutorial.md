@@ -8,7 +8,7 @@ left to right:
 1. **Data loading** — load files and view the raw data / capacity
 2. **Pulse verification** — check that the current-interruption pulses are detected correctly
 3. **Regression** — fit ΔV vs √t for each pulse and inspect R²
-4. **Kinetic analysis** — compute and plot the resistances *R* and *k*
+4. **R & k analysis** — compute and plot the resistances *R* and *k*
 
 Every section has its controls on the left and its plots on the right, and each
 section picks its own active file, so you can compare datasets side by side.
@@ -131,7 +131,7 @@ bottom plot tracks **R²** across the pulses of the current cycle.
   **start** and **end**, keeping them inside the interruption period.
 - **Applying a window.** **Apply → pulse / cycle / all cycles** previews the typed
   window at that scope; the **Save** button beside each **persists** it (per file),
-  so it survives navigation and feeds the kinetic analysis. Hand-tuned pulses keep
+  so it survives navigation and feeds the R & k analysis. Hand-tuned pulses keep
   their saved window; untuned pulses use the default. **Restore defaults** clears
   them.
 - **R** and **k** for the current pulse are shown on the fit plot.
@@ -143,7 +143,7 @@ bottom plot tracks **R²** across the pulses of the current cycle.
 
 ---
 
-## 4. Kinetic analysis
+## 4. R & k analysis
 
 Using the per-pulse windows carried over from Regression, this section computes the
 internal resistance **R** and the diffusion resistance coefficient **k**:

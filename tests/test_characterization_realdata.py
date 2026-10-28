@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 
 from analysis.data_loader import run_data_analysis
-from analysis.kinetic_analyzer import compute_R_k_for_cycle
+from analysis.rk_analyzer import compute_R_k_for_cycle
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 TEN_CYCLES = "10 cycles data.txt"

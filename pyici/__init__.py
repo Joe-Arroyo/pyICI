@@ -46,7 +46,7 @@ from analysis.regression_analyzer import (
 )
 
 # ---- resistances R and k --------------------------------------------------
-from analysis.kinetic_analyzer import (
+from analysis.rk_analyzer import (
     compute_R_k_for_cycle,
     compute_R_k_for_cycles,
     export_R_k_results,

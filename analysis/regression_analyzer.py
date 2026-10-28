@@ -46,6 +46,19 @@ DEFAULT_TIME_START = 0.1        # seconds
 DEFAULT_TIME_END = 1.0          # seconds
 MIN_WINDOW_POINTS = 3           # < 3 pts -> NaN (s2 = Σr²/(n-2) is undefined at n=2)
 
+# ---- auto fit-window estimation (opt-in "Estimate optimal window") ----------
+# Defaults for estimate_optimal_window(). The auto window finds the ΔV-vs-√t fit
+# window with the smallest fit error AMONG windows that stay in the linear
+# (√t-diffusion) region, so it never trades physical validity for a smaller
+# error bar. These are presentation/assist defaults; the analysis itself is
+# unchanged (same R = -intercept/I, k = -slope/I, same covariance errors).
+AUTO_SKIP_INITIAL = 1     # samples skipped at the start (IR-drop / instantaneous point)
+AUTO_MIN_POINTS = 5       # minimum points in a candidate window
+AUTO_ADJ_R2_MIN = 0.995   # minimum adjusted R² for a window to count as "linear"
+AUTO_EDGE_POINTS = 3      # points at each window end used for the curvature check
+AUTO_EDGE_Z_MAX = 3.0     # max edge-curvature z-score before a window is rejected
+AUTO_MAX_START = 2        # how far past AUTO_SKIP_INITIAL the window start may move
+
 # =============================================================================
 # GLOBAL VARIABLES
 # =============================================================================
@@ -347,8 +360,285 @@ def compute_r2_all_pulses(data, pulse_numbers, r1_start, r1_length):
         result['phase'] = 'charge' if avg_current > 0 else 'discharge'
         
         results.append(result)
-    
+
     return results
+
+# =============================================================================
+# AUTO FIT-WINDOW ESTIMATION  ("Estimate optimal window")
+# =============================================================================
+
+def _edge_curvature_z(residuals, edge_points):
+    """Edge-curvature diagnostic for a fit window.
+
+    Returns the larger of the two window-end mean residuals, expressed in units
+    of its own standard error. A large value means the data bends systematically
+    away from the straight line at one end of the window — i.e. the window has
+    reached the non-√t (curved) region. Returns 0.0 for a degenerate window.
+    """
+    r = np.asarray(residuals, dtype=float)
+    k = edge_points
+    if len(r) < 2 * k:
+        k = max(2, len(r) // 3)
+    s = np.std(r, ddof=1)
+    if s == 0 or not np.isfinite(s):
+        return 0.0
+    first = abs(np.mean(r[:k]))
+    last = abs(np.mean(r[-k:]))
+    return float(max(first, last) / (s / np.sqrt(k)))
+
+
+def _scan_windows(sqrt_t, dv, start, min_points):
+    """Vectorised OLS of ΔV vs √t for every window ``[start : e]`` (e running to
+    the end) with at least ``min_points`` points.
+
+    Computed with prefix sums in O(n) for the whole scan, giving results
+    numerically identical to :func:`compute_single_pulse_regression` (the single
+    canonical fit) — it is only an accelerator for the candidate search, and the
+    finally-chosen window is always re-fit through that canonical function.
+
+    Returns arrays aligned to the window end index ``end`` (0-based):
+    ``end, n_points, slope, intercept, r2, slope_err, intercept_err, valid``.
+    """
+    x = sqrt_t[start:]
+    y = dv[start:]
+    m = len(x)
+    n_pts = np.arange(1, m + 1)
+    Sx = np.cumsum(x); Sy = np.cumsum(y)
+    Sxx = np.cumsum(x * x); Syy = np.cumsum(y * y); Sxy = np.cumsum(x * y)
+    with np.errstate(all='ignore'):
+        mean_x = Sx / n_pts
+        mean_y = Sy / n_pts
+        Sxx_c = Sxx - Sx * Sx / n_pts
+        Sxy_c = Sxy - Sx * Sy / n_pts
+        Syy_c = Syy - Sy * Sy / n_pts
+        slope = Sxy_c / Sxx_c
+        intercept = mean_y - slope * mean_x
+        ss_res = np.clip(Syy_c - Sxy_c * Sxy_c / Sxx_c, 0.0, None)
+        r2 = 1.0 - ss_res / Syy_c
+        s2 = ss_res / (n_pts - 2)
+        slope_err = np.sqrt(s2 / Sxx_c)
+        intercept_err = np.sqrt(s2 * (1.0 / n_pts + mean_x * mean_x / Sxx_c))
+    end = start + np.arange(m)
+    valid = ((n_pts >= min_points) & (Sxx_c > 0)
+             & np.isfinite(r2) & np.isfinite(slope_err) & np.isfinite(intercept_err))
+    return end, n_pts, slope, intercept, r2, slope_err, intercept_err, valid
+
+
+def estimate_optimal_window(rest_data, *, skip_initial=AUTO_SKIP_INITIAL,
+                            min_points=AUTO_MIN_POINTS, adj_r2_min=AUTO_ADJ_R2_MIN,
+                            edge_points=AUTO_EDGE_POINTS, edge_z_max=AUTO_EDGE_Z_MAX,
+                            max_start=AUTO_MAX_START):
+    """Suggest the ΔV-vs-√t fit window with the smallest fit error among windows
+    that stay in the linear (√t-diffusion) region.
+
+    ``rest_data`` is one pulse's rest period, carrying ``'t/s'`` and ``'ΔV'``
+    columns (as prepared for :func:`compute_single_pulse_regression`). The search:
+
+    1. skips the first ``skip_initial`` samples (the IR-drop / instantaneous point),
+    2. keeps only windows with at least ``min_points`` points, an adjusted R² of
+       at least ``adj_r2_min``, and no edge curvature (``edge_z <= edge_z_max``),
+    3. returns the qualifying window with the smallest combined relative standard
+       error on slope and intercept.
+
+    If no window qualifies it returns the most-linear fallback window with a
+    non-empty ``flags`` list, so a weak pulse is surfaced rather than silently
+    mis-fit. The science is unchanged: this only *chooses* a window; R and k are
+    still computed by the usual pipeline from the returned window.
+
+    Parameters mirror the ``AUTO_*`` module defaults.
+
+    Returns ``None`` if the rest is too short, otherwise a dict with:
+        ``r1_start``, ``r1_length`` : 0-based window for compute_single_pulse_regression
+        ``index_start``, ``index_end`` : 1-based inclusive index window (GUI index mode)
+        ``time_start``, ``time_end`` : window bounds, seconds from the first rest sample
+        ``n_points``, ``r2``, ``adj_r2``, ``slope``, ``intercept``
+        ``k_relerr``, ``R_relerr`` : relative std error on slope (k) and intercept (R)
+        ``edge_z`` : edge-curvature z-score of the chosen window
+        ``flags`` : list of QC flags ('too_few_points', 'poor_fit',
+            'edge_curvature', 'low_confidence'); empty when every gate passed.
+
+    Note: the physical QC flags that need the pulse current (negative R/k —
+    'non_physical' — and a near-zero current step — 'degenerate_dI') are added by
+    the caller, which knows the current; this function reports only fit-based flags.
+    """
+    if rest_data is None or len(rest_data) < skip_initial + min_points:
+        return None
+    t = rest_data['t/s'].values.astype(float)
+    sqrt_t = np.sqrt(t - t[0])
+    dv = rest_data['ΔV'].values.astype(float)
+    n = len(dv)
+
+    def _build(start, end, flags):
+        length = end - start + 1
+        # Re-fit the chosen window through the single canonical implementation.
+        fit = compute_single_pulse_regression(rest_data, start, length)
+        cov = fit.get('cov')
+        slope, intercept, r2 = fit['slope'], fit['intercept'], fit['r2']
+        if cov is None:
+            return None
+        se_slope = float(np.sqrt(cov[0, 0]))
+        se_intercept = float(np.sqrt(cov[1, 1]))
+        resid = dv[start:end + 1] - (slope * sqrt_t[start:end + 1] + intercept)
+        adj = 1.0 - (1.0 - r2) * (length - 1) / (length - 2) if length > 2 else float('nan')
+        return {
+            'r1_start': int(start), 'r1_length': int(length),
+            'index_start': int(start) + 1, 'index_end': int(end) + 1,
+            'time_start': float(sqrt_t[start] ** 2), 'time_end': float(sqrt_t[end] ** 2),
+            'n_points': int(length), 'r2': float(r2), 'adj_r2': float(adj),
+            'slope': float(slope), 'intercept': float(intercept),
+            'k_relerr': float(se_slope / abs(slope)) if slope else float('nan'),
+            'R_relerr': float(se_intercept / abs(intercept)) if intercept else float('nan'),
+            'edge_z': _edge_curvature_z(resid, edge_points),
+            'flags': list(flags),
+        }
+
+    candidates = []      # (combined_rel_err, start, end) passing adj_r2 + min_points
+    fallback = None      # (adj_r2, start, end) — most-linear window seen
+    start_hi = min(skip_initial + max_start, n - min_points)
+    for start in range(skip_initial, start_hi + 1):
+        end, n_pts, slope, intercept, r2, se_sl, se_in, valid = _scan_windows(
+            sqrt_t, dv, start, min_points)
+        for j in np.nonzero(valid)[0]:
+            sl, ic = slope[j], intercept[j]
+            if not (np.isfinite(sl) and sl != 0 and np.isfinite(ic) and ic != 0):
+                continue
+            length = int(n_pts[j])
+            adj = 1.0 - (1.0 - r2[j]) * (length - 1) / (length - 2) if length > 2 else np.nan
+            if fallback is None or (np.isfinite(adj) and adj > fallback[0]):
+                fallback = (adj, start, int(end[j]))
+            if np.isfinite(adj) and adj >= adj_r2_min:
+                rel = se_sl[j] / abs(sl) + se_in[j] / abs(ic)
+                candidates.append((rel, start, int(end[j]), float(sl), float(ic)))
+
+    # smallest error first; take the first that also passes the edge-curvature gate
+    candidates.sort(key=lambda c: c[0])
+    for _rel, start, end, sl, ic in candidates:
+        resid = dv[start:end + 1] - (sl * sqrt_t[start:end + 1] + ic)
+        if _edge_curvature_z(resid, edge_points) <= edge_z_max:
+            return _build(start, end, [])
+
+    if fallback is None:
+        return None
+    adj, start, end = fallback
+    flags = ['low_confidence']
+    if (end - start + 1) <= min_points:
+        flags.append('too_few_points')
+    if not (np.isfinite(adj) and adj >= adj_r2_min):
+        flags.append('poor_fit')
+    rec = _build(start, end, flags)
+    if rec is not None and rec['edge_z'] > edge_z_max and 'edge_curvature' not in flags:
+        rec['flags'].append('edge_curvature')
+    return rec
+
+
+def pulse_rest_data(data, pulse_num):
+    """Return one pulse's rest-period samples with a ``'ΔV' = E - V0`` column,
+    ready for :func:`estimate_optimal_window` / :func:`compute_single_pulse_regression`.
+
+    ``data`` is a phase DataFrame carrying ``pulse_number``, ``I/mA``, ``E/V`` and
+    a ``V0`` column (as produced by :func:`compute_V0_t0`). Returns ``None`` if the
+    pulse has no rest samples or V0 is undefined.
+    """
+    pulse = data[data['pulse_number'] == pulse_num]
+    rest = pulse[pulse['I/mA'] == 0].copy()
+    if len(rest) == 0:
+        return None
+    v0 = get_V0(data, pulse_num)
+    if np.isnan(v0):
+        return None
+    rest['ΔV'] = rest['E/V'] - v0
+    return rest
+
+
+def _window_flags(rest_data, r1_start, r1_length, *, adj_r2_min=AUTO_ADJ_R2_MIN,
+                  edge_points=AUTO_EDGE_POINTS, edge_z_max=AUTO_EDGE_Z_MAX,
+                  min_points=AUTO_MIN_POINTS):
+    """QC flags a *given* window would raise on one pulse (used to check a shared
+    window on every pulse in a cycle). Returns a list: 'too_few_points',
+    'poor_fit' and/or 'edge_curvature' (empty when the window fits that pulse well).
+    """
+    if r1_length < min_points or len(rest_data) < r1_start + r1_length:
+        return ['too_few_points']
+    fit = compute_single_pulse_regression(rest_data, r1_start, r1_length)
+    if fit.get('cov') is None or not np.isfinite(fit['r2']):
+        return ['poor_fit']
+    length = r1_length
+    adj = 1.0 - (1.0 - fit['r2']) * (length - 1) / (length - 2) if length > 2 else float('nan')
+    sqrt_t = np.sqrt(rest_data['t/s'].values - rest_data['t/s'].values[0])
+    dv = rest_data['ΔV'].values
+    resid = dv[r1_start:r1_start + length] - (
+        fit['slope'] * sqrt_t[r1_start:r1_start + length] + fit['intercept'])
+    flags = []
+    if not (np.isfinite(adj) and adj >= adj_r2_min):
+        flags.append('poor_fit')
+    if _edge_curvature_z(resid, edge_points) > edge_z_max:
+        flags.append('edge_curvature')
+    return flags
+
+
+def estimate_window_for_pulses(data, pulse_numbers, *, skip_initial=AUTO_SKIP_INITIAL,
+                               min_points=AUTO_MIN_POINTS, adj_r2_min=AUTO_ADJ_R2_MIN,
+                               edge_points=AUTO_EDGE_POINTS, edge_z_max=AUTO_EDGE_Z_MAX,
+                               max_start=AUTO_MAX_START):
+    """Suggest ONE fit window shared by several pulses — for the "this cycle" and
+    "all cycles" Auto actions.
+
+    Each pulse's own optimal window is found with :func:`estimate_optimal_window`;
+    the shared window is the **median time span** of the cleanly-fit pulses, so a
+    single odd pulse can't drag it. Because pulses differ in length, the shared
+    window is defined in **time** (seconds from each rest's start) and re-mapped to
+    indices per pulse. That shared window is then checked on every pulse to report
+    which ones it fits poorly.
+
+    Returns ``None`` if no pulse can be fit, else a dict:
+        ``time_start``, ``time_end`` : the shared window (seconds)
+        ``n_pulses``, ``n_flagged``  : counts
+        ``per_pulse`` : list of ``{'pulse', 'flags'}`` for every input pulse
+        ``flags`` : overall flags ('low_confidence' when the shared window had to
+            be taken from pulses that were themselves flagged).
+    """
+    pulse_numbers = list(pulse_numbers)
+    kw = dict(skip_initial=skip_initial, min_points=min_points, adj_r2_min=adj_r2_min,
+              edge_points=edge_points, edge_z_max=edge_z_max, max_start=max_start)
+    rests = {}
+    clean_spans, all_spans = [], []
+    for p in pulse_numbers:
+        rest = pulse_rest_data(data, p)
+        rests[p] = rest
+        if rest is None:
+            continue
+        o = estimate_optimal_window(rest, **kw)
+        if o is None:
+            continue
+        all_spans.append((o['time_start'], o['time_end']))
+        if not o['flags']:
+            clean_spans.append((o['time_start'], o['time_end']))
+
+    spans = clean_spans or all_spans
+    if not spans:
+        return None
+    t_start = float(np.median([s for s, _ in spans]))
+    t_end = float(np.median([e for _, e in spans]))
+
+    per_pulse, n_flagged = [], 0
+    for p in pulse_numbers:
+        rest = rests.get(p)
+        if rest is None:
+            per_pulse.append({'pulse': p, 'flags': ['no_data']}); n_flagged += 1; continue
+        r1s, r1l = time_to_indices(rest, t_start, t_end)
+        flags = _window_flags(rest, r1s, r1l, adj_r2_min=adj_r2_min,
+                              edge_points=edge_points, edge_z_max=edge_z_max,
+                              min_points=min_points)
+        if flags:
+            n_flagged += 1
+        per_pulse.append({'pulse': p, 'flags': flags})
+
+    return {
+        'time_start': t_start, 'time_end': t_end,
+        'n_pulses': len(pulse_numbers), 'n_flagged': n_flagged,
+        'per_pulse': per_pulse,
+        'flags': [] if clean_spans else ['low_confidence'],
+    }
 
 # =============================================================================
 # CYCLE LOADING AND PROCESSING

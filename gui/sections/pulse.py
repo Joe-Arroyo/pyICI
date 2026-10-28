@@ -25,6 +25,7 @@ import customtkinter as ctk
 from gui import theme
 from gui.components.plot_panel import PlotPanel
 from gui.components.export_helper import export_figure
+from gui.components.scroll import AutoHideScrollableFrame
 from analysis import pulse_analyzer
 
 CHARGE = "charge"
@@ -73,7 +74,7 @@ class PulseCheckSection(ctk.CTkFrame):
         card, outer = theme.card(self, "Pulse verification - controls", width=theme.CONTROL_W)
         card.pack(side="left", fill="y", padx=(0, theme.GAP))
         card.pack_propagate(False)
-        body = ctk.CTkFrame(outer, fg_color="transparent")       # #2 breathing room
+        body = AutoHideScrollableFrame(outer, fg_color="transparent")  # #2 breathing room
         body.pack(fill="both", expand=True, padx=(2, 12))
 
         def slabel(text, pady=(0, 2)):                            # #1 bold/dark labels
