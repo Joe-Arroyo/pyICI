@@ -31,6 +31,7 @@ The GUI is organized into four sections:
 
 - **Regression**: Interactively perform linear regression of the voltage vs $\sqrt{time}$ data during each ICI step.
   - User-defined fit window (time or index), applied to a single pulse, a whole cycle, or all cycles, and saved per file
+  - Optional **automatic fit-window detection** that suggests the optimal window per pulse (both phases, every cycle at once) with quality flags — adapted from the "Estimate optimal window" feature of [ICI Studio](https://github.com/mjlacey/ici_studio)
   - Fit parameters (slope, intercept) evaluated with R<sup>2</sup>, using the covariance matrix for error propagation
   - The regression fit and an R<sup>2</sup>-across-pulses plot shown together, with axis-limit controls; an "Overall check" of R<sup>2</sup> across every cycle
   - *R* and *k* shown on the fit plot, and a secondary time axis on the ΔV-vs-√time plot
@@ -131,8 +132,9 @@ See the [Tutorial](Tutorial.md) for a quick guide through pyICI's features.
 ## Use as a library
 
 Beyond the GUI, pyICI can be scripted — useful for batch-processing many files or
-feeding *R* / *k* into your own analysis. Import everything from the top-level
-`pyici` package (no GUI / tkinter needed):
+feeding *R* / *k* into your own analysis. Install it from PyPI as **`ici-analysis`**
+(the distribution name — it still imports as `pyici`), then import everything from
+the top-level `pyici` package (no GUI / tkinter needed):
 
 ```python
 import pyici

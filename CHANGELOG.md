@@ -23,7 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   min points, min adjusted R², edge points) are adjustable in a collapsible
   "Auto fit options" panel. The window scan is vectorised and numerically
   identical to the canonical single-pulse fit, so it changes no results (the full
-  auto-fit over the 10-cycle example runs in well under a second).
+  auto-fit over the 10-cycle example runs in well under a second). The feature is
+  inspired by the "Estimate optimal window" tool in
+  [ICI Studio](https://github.com/mjlacey/ici_studio) (Matthew J. Lacey), adapting
+  its idea of scoring candidate ΔV-vs-√t windows by linearity (adjusted R²) and
+  edge-curvature diagnostics; pyICI estimates a window per pulse rather than one
+  global window.
 - **R & k analysis — include the other phase.** A checkbox overlays the opposite
   phase (charge with discharge, or vice versa) on the R and k plots for direct
   comparison; its label follows the selected phase.

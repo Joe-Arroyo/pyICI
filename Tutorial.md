@@ -134,6 +134,26 @@ bottom plot tracks **R²** across the pulses of the current cycle.
   so it survives navigation and feeds the R & k analysis. Hand-tuned pulses keep
   their saved window; untuned pulses use the default. **Restore defaults** clears
   them.
+- **Automatic fit window (Auto).** The **Fit window** switch toggles between
+  **Manual** (above) and **Auto**. Selecting **Auto** immediately estimates the
+  optimal ΔV-vs-√t window for **every pulse of every cycle** (both phases) at once:
+  for each pulse it keeps the lowest-error window that still passes a **linearity**
+  check (adjusted R²) and an **edge-curvature** check — which rejects windows that
+  reach past the straight-line √t region — and it **flags** any pulse it cannot fit
+  cleanly (e.g. `low_confidence`, `edge_curvature`). Flagged pulses are listed in
+  the status bar and marked on the pulse so you can review them. The suggested
+  windows show for review; **Save auto windows** persists them per file (like a
+  manual Save) and **Restore defaults** discards them. The **⚙ Auto fit options**
+  panel exposes the thresholds — *skip first* (IR-drop points to ignore),
+  *min points*, *min adj R²* (linearity), and *edge points* (how many points at
+  each end the curvature check averages) — with a **Re-run auto fit** button to
+  apply changes.
+
+  > The automatic window detection is inspired by the **"Estimate optimal window"**
+  > feature of **[ICI Studio](https://github.com/mjlacey/ici_studio)** (Matthew J.
+  > Lacey). pyICI adapts its idea of scoring candidate ΔV-vs-√t windows by fit
+  > linearity (adjusted R²) and edge-curvature diagnostics, but estimates a window
+  > **per pulse** rather than applying a single global window across the file.
 - **R** and **k** for the current pulse are shown on the fit plot.
 - **Overall check (R² all cycles)** toggles the bottom plot to show R² of every
   pulse across every cycle — charge in blues, discharge in reds, darkening by cycle.
